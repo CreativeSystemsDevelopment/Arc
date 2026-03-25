@@ -538,3 +538,36 @@ When working on this codebase, always follow these rules:
 | LangGraph Studio | https://docs.langchain.com/oss/python/langgraph/studio |
 | Next.js 15 docs | https://nextjs.org/docs |
 | Framer Motion docs | https://www.framer.com/motion/ |
+
+---
+
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | Command | Port | Notes |
+|---|---|---|---|
+| Backend (FastAPI) | `cd backend && python3 -m uvicorn src.main:app --reload --port 8000` | 8000 | Requires `ANTHROPIC_API_KEY` (or another LLM provider key) env var |
+| Frontend (Next.js) | `cd frontend && npm run dev` | 3000 | Turbopack-based dev server |
+
+### Gotchas
+
+- **`pyproject.toml` hatch build config**: The backend's `pyproject.toml` needs `[tool.hatch.build.targets.wheel] packages = ["src"]` for editable installs to work. Without it, `pip install -e ".[dev]"` fails because hatchling can't auto-detect the package layout.
+- **`next.config.mjs` PPR**: The `experimental.ppr` option requires `next@canary`. On stable Next.js 15.x, it must be commented out or removed to avoid build/lint errors.
+- **ESLint config**: The frontend needs an `eslint.config.mjs` file for `next lint` to work non-interactively. Without it, the CLI prompts for setup interactively and blocks.
+- **Backend module-level agent init**: The `arc_agent` singleton in `src/agent.py` is built at import time. The backend server will start successfully with dummy API keys, but actual LLM calls will fail without valid keys.
+- **PATH for pip-installed tools**: Tools installed via `pip install --user` (e.g., `uvicorn`, `ruff`, `pytest`) end up in `~/.local/bin`. Ensure this is on `PATH`.
+- **No lock files**: Neither `package-lock.json` nor `uv.lock` exist. Dependency resolution happens fresh on each install.
+
+### Lint / Test / Build commands
+
+See `README.md` for full setup. Quick reference:
+
+- **Backend lint**: `cd backend && ruff check .` (auto-fix: `ruff check --fix .`)
+- **Backend tests**: `cd backend && python3 -m pytest`
+- **Frontend lint**: `cd frontend && npx next lint`
+- **Frontend build**: `cd frontend && npm run build`
+
+### Required secrets for end-to-end agent usage
+
+At minimum `ANTHROPIC_API_KEY` must be set as an environment variable. See `.env.example` for the full list. Copy to `.env` and fill in values.
