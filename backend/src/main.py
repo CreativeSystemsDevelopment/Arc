@@ -8,10 +8,13 @@ Or for LangGraph Studio development:
     langgraph dev --allow-blocking
 """
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.routes import router
+load_dotenv()
+
+from src.routes import router  # noqa: E402
 
 app = FastAPI(
     title="Arc — Deep Agent API",
