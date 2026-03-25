@@ -19,7 +19,7 @@ def build_agent():
     """Build and return the Arc deep agent graph."""
 
     model = init_chat_model(
-        os.environ.get("AGENT_MODEL", "anthropic:claude-sonnet-4-20250514")
+        os.environ.get("AGENT_MODEL", "openrouter:minimax/minimax-m2.7")
     )
 
     system_prompt = """You are Arc, an Archenemies Deep Agent.

@@ -547,7 +547,7 @@ When working on this codebase, always follow these rules:
 
 | Service | Command | Port | Notes |
 |---|---|---|---|
-| Backend (FastAPI) | `cd backend && python3 -m uvicorn src.main:app --reload --port 8000` | 8000 | Requires `ANTHROPIC_API_KEY` (or another LLM provider key) env var |
+| Backend (FastAPI) | `cd backend && python3 -m uvicorn src.main:app --reload --port 8000` | 8000 | Requires `OPENROUTER_API_KEY` env var (default model: `openrouter:minimax/minimax-m2.7`) |
 | Frontend (Next.js) | `cd frontend && npm run dev` | 3000 | Turbopack-based dev server |
 
 ### Gotchas
@@ -557,7 +557,8 @@ When working on this codebase, always follow these rules:
 - **ESLint config**: The frontend needs an `eslint.config.mjs` file for `next lint` to work non-interactively. Without it, the CLI prompts for setup interactively and blocks.
 - **Backend module-level agent init**: The `arc_agent` singleton in `src/agent.py` is built at import time. The backend server will start successfully with dummy API keys, but actual LLM calls will fail without valid keys.
 - **PATH for pip-installed tools**: Tools installed via `pip install --user` (e.g., `uvicorn`, `ruff`, `pytest`) end up in `~/.local/bin`. Ensure this is on `PATH`.
-- **No lock files**: Neither `package-lock.json` nor `uv.lock` exist. Dependency resolution happens fresh on each install.
+- **No lock files**: `uv.lock` does not exist. `package-lock.json` is committed. Dependency resolution for Python happens fresh on each install.
+- **OpenRouter model config**: The default model is `openrouter:minimax/minimax-m2.7`. Alternative: `openrouter:xiaomi/mimo-v2-pro`. Change via `AGENT_MODEL` env var. The `langchain-openrouter` package handles the native integration.
 
 ### Lint / Test / Build commands
 
@@ -570,4 +571,8 @@ See `README.md` for full setup. Quick reference:
 
 ### Required secrets for end-to-end agent usage
 
-At minimum `ANTHROPIC_API_KEY` must be set as an environment variable. See `.env.example` for the full list. Copy to `.env` and fill in values.
+At minimum `OPENROUTER_API_KEY` must be set as an environment variable. The default model uses OpenRouter (`openrouter:minimax/minimax-m2.7`). See `.env.example` for the full list. Copy to `.env` and fill in values.
+
+### SSE event protocol
+
+The backend streams structured Server-Sent Events to the frontend. Event types: `status`, `message`, `tool_call`, `tool_result`, `todos`, `error`, `done`. See `backend/src/routes.py` for details.
