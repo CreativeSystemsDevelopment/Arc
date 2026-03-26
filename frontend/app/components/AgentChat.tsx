@@ -794,6 +794,9 @@ export function AgentChat() {
           toggleAudio={() => setAudioEnabled((current) => !current)}
           commands={uiMeta?.slash_commands ?? []}
           setInput={setInput}
+          onExecuteCommand={(command) => {
+            void handleSlashCommand(command);
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             void handleSubmit(input);
