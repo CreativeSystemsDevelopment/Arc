@@ -538,3 +538,69 @@ When working on this codebase, always follow these rules:
 | LangGraph Studio | https://docs.langchain.com/oss/python/langgraph/studio |
 | Next.js 15 docs | https://nextjs.org/docs |
 | Framer Motion docs | https://www.framer.com/motion/ |
+
+---
+
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | Command | Port | Notes |
+|---|---|---|---|
+| Backend (FastAPI) | `cd backend && python3 -m uvicorn src.main:app --reload --port 8000` | 8000 | Requires `OPENROUTER_API_KEY` env var (default model: `openrouter:minimax/minimax-m2.7`) |
+| Frontend (Next.js) | `cd frontend && npm run dev` | 3000 | Turbopack-based dev server |
+
+### Gotchas
+
+- **`pyproject.toml` hatch build config**: The backend's `pyproject.toml` needs `[tool.hatch.build.targets.wheel] packages = ["src"]` for editable installs to work. Without it, `pip install -e ".[dev]"` fails because hatchling can't auto-detect the package layout.
+- **`next.config.mjs` PPR**: The `experimental.ppr` option requires `next@canary`. On stable Next.js 15.x, it must be commented out or removed to avoid build/lint errors.
+- **ESLint config**: The frontend needs an `eslint.config.mjs` file for `next lint` to work non-interactively. Without it, the CLI prompts for setup interactively and blocks.
+- **Backend module-level agent init**: The `arc_agent` singleton in `src/agent.py` is built at import time. The backend server will start successfully with dummy API keys, but actual LLM calls will fail without valid keys.
+- **PATH for pip-installed tools**: Tools installed via `pip install --user` (e.g., `uvicorn`, `ruff`, `pytest`) end up in `~/.local/bin`. Ensure this is on `PATH`.
+- **No lock files**: `uv.lock` does not exist. `package-lock.json` is committed. Dependency resolution for Python happens fresh on each install.
+- **OpenRouter model config**: The default model is `openrouter:minimax/minimax-m2.7`. Alternative: `openrouter:xiaomi/mimo-v2-pro`. Change via `AGENT_MODEL` env var. The `langchain-openrouter` package handles the native integration.
+
+### Lint / Test / Build commands
+
+See `README.md` for full setup. Quick reference:
+
+- **Backend lint**: `cd backend && ruff check .` (auto-fix: `ruff check --fix .`)
+- **Backend tests**: `cd backend && python3 -m pytest`
+- **Frontend lint**: `cd frontend && npx next lint`
+- **Frontend build**: `cd frontend && npm run build`
+
+### Required secrets for end-to-end agent usage
+
+At minimum `OPENROUTER_API_KEY` must be set as an environment variable. The default model uses OpenRouter (`openrouter:minimax/minimax-m2.7`). See `.env.example` for the full list. Copy to `.env` and fill in values.
+
+### SSE event protocol
+
+The backend streams structured Server-Sent Events to the frontend. Event types: `status`, `message`, `tool_call`, `tool_result`, `todos`, `error`, `done`. See `backend/src/routes.py` for details.
+
+### Arc Deep Zero agent architecture
+
+The agent is "Arc (Archimedes)" — an enterprise AI architect. Key backend modules:
+
+| Module | Purpose |
+|---|---|
+| `src/agent.py` | Wires the complete agent with all tools, middleware, subagents |
+| `src/prompt.py` | Full system prompt defining Arc's identity and operating principles |
+| `src/middleware.py` | Audit log, research gate, self-maintenance middleware |
+| `src/tools/vm_health.py` | VM health check, disk usage, process listing (psutil) |
+| `src/tools/reflection.py` | write_reflection and create_skill for self-improvement |
+| `src/tools/search.py` | Web search via Tavily/LangChain |
+| `src/subagents/researcher.py` | Research-first subagent (always delegates before implementing) |
+| `src/subagents/coder.py` | Code writing/debugging subagent |
+| `src/subagents/doc_extraction.py` | PDF/OCR/diagram extraction subagent |
+| `src/subagents/uiux.py` | React/Next.js/Tailwind frontend subagent |
+
+### UI architecture (planned 5-zone layout)
+
+See uploaded `arc_ui_component_architecture.md` for the full spec. The 5 zones are:
+1. **TopBar**: Agent identity, XP/tier badge, context meter, VM health pulse
+2. **Sidebar**: Navigation (Chat, Plan, Files, Skills, Memories, Agents, Terminal, Settings)
+3. **Main Panel**: Conversation stream with tool-specific renderers, HITL approval overlays
+4. **Context Panel**: Contextual detail for selected items
+5. **Input Bar**: Message input with slash commands and keyboard shortcuts
+
+All UI components are custom-built to match Deep Agent framework features (tool call cards, todo panels, subagent dashboards, etc.).
