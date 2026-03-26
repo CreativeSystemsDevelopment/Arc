@@ -243,7 +243,7 @@ export function OrbScene({
       <div className="absolute inset-x-0 top-[28vh] h-px bg-[linear-gradient(to_right,transparent,rgba(187,198,229,0.34),transparent)]" />
 
       <motion.div
-        className="absolute inset-x-[-8%] top-[28vh] bottom-[-18vh]"
+        className="absolute left-1/2 top-[28vh] h-[62vh] w-[min(82vw,70rem)] -translate-x-1/2"
         animate={
           reducedMotion
             ? { opacity: 0.96 }
@@ -254,11 +254,13 @@ export function OrbScene({
         <div
           className="h-full w-full"
           style={{
-            clipPath: "polygon(28% 0%, 72% 0%, 100% 100%, 0% 100%)",
+            transform: "perspective(1200px) rotateX(74deg)",
+            transformOrigin: "top center",
             background:
-              "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 8%, rgba(8,10,16,0.32) 26%, rgba(5,7,12,0.82) 56%, rgba(1,2,5,1) 100%)",
+              "linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 10%, rgba(10,12,18,0.34) 24%, rgba(6,8,13,0.86) 58%, rgba(1,2,5,1) 100%)",
+            borderTop: "1px solid rgba(255,255,255,0.18)",
             boxShadow:
-              "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 120px 240px rgba(255,255,255,0.018), 0 -40px 140px rgba(0,0,0,0.56)",
+              "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 120px 240px rgba(255,255,255,0.02), 0 -40px 140px rgba(0,0,0,0.56)",
           }}
         />
       </motion.div>

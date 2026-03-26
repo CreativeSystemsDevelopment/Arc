@@ -746,18 +746,22 @@ export function AgentChat() {
           </div>
 
           <div className="min-h-0">
-            <div className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(7,10,16,0.18)_0%,rgba(5,8,13,0.32)_18%,rgba(3,5,9,0.54)_42%,rgba(2,3,6,0.92)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[14px]">
+            <div className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
               <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent" />
-              <div className="pointer-events-none absolute inset-x-[10%] top-0 bottom-0 [clip-path:polygon(22%_0%,78%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.012)_18%,rgba(255,255,255,0.0)_38%,rgba(0,0,0,0.0)_100%)] opacity-80" />
+              <div className="pointer-events-none absolute inset-x-[6%] top-[10%] bottom-[-14%] [clip-path:polygon(20%_0%,80%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.012)_12%,rgba(255,255,255,0.0)_26%,rgba(0,0,0,0.0)_100%)] opacity-90" />
+              <div className="pointer-events-none absolute inset-x-[12%] top-[22%] bottom-[-18%] [clip-path:polygon(22%_0%,78%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.0)_18%,rgba(0,0,0,0.0)_100%)] opacity-88" />
               <div
-                className="pointer-events-none absolute left-[18%] top-0 bottom-0 w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.18),rgba(255,255,255,0.04),transparent)] opacity-44"
-                style={{ transform: "skewX(22deg)", transformOrigin: "top" }}
+                className="pointer-events-none absolute left-[14%] top-[10%] bottom-[-10%] w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.22),rgba(255,255,255,0.05),transparent)] opacity-62"
+                style={{ transform: "skewX(26deg)", transformOrigin: "top" }}
               />
               <div
-                className="pointer-events-none absolute right-[18%] top-0 bottom-0 w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.18),rgba(255,255,255,0.04),transparent)] opacity-44"
-                style={{ transform: "skewX(-22deg)", transformOrigin: "top" }}
+                className="pointer-events-none absolute right-[14%] top-[10%] bottom-[-10%] w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.22),rgba(255,255,255,0.05),transparent)] opacity-62"
+                style={{ transform: "skewX(-26deg)", transformOrigin: "top" }}
               />
-              <div className="pointer-events-none absolute inset-x-[16%] bottom-[18%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.2),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[16%] top-[38%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.1),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[12%] top-[56%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.16),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[8%] top-[78%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.22),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[18%] top-[48%] h-24 rounded-[50%] bg-[radial-gradient(circle,rgba(255,255,255,0.04),rgba(255,255,255,0.0)_72%)] blur-3xl opacity-80" />
               <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
                 <div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
