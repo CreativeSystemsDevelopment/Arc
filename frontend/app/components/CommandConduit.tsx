@@ -9,6 +9,7 @@ interface CommandConduitProps {
   input: string;
   setInput: (value: string) => void;
   onSubmit: (event: React.FormEvent) => void;
+  onExecuteCommand?: (command: string) => void;
   isStreaming: boolean;
   reducedMotion: boolean;
   audioEnabled: boolean;
@@ -23,6 +24,7 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
       input,
       setInput,
       onSubmit,
+      onExecuteCommand,
       isStreaming,
       reducedMotion,
       audioEnabled,
@@ -100,6 +102,12 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                   id="arc-command-conduit"
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }}
                   disabled={isStreaming}
                   rows={1}
                   placeholder="Message Arc through the conduit..."
@@ -137,7 +145,14 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                   <button
                     key={command.id}
                     type="button"
-                    onClick={() => setInput(`${command.label} `)}
+                    onClick={() => {
+                      if (onExecuteCommand) {
+                        onExecuteCommand(command.label);
+                        setInput("");
+                        return;
+                      }
+                      setInput(`${command.label} `);
+                    }}
                     className="flex items-start justify-between rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left transition hover:border-violet-300/20 hover:bg-white/[0.05]"
                   >
                     <div>
