@@ -30,6 +30,8 @@ import type {
 const STORAGE_KEY = "arc-orb-threads";
 const MAX_VISIBLE_MESSAGES = 12;
 const DEFAULT_CONTEXT_WINDOW = 200_000;
+const EMPTY_MESSAGES: ArcMessage[] = [];
+const EMPTY_TODOS: TodoItem[] = [];
 
 function createThreadRecord(threadId?: string): ThreadRecord {
   const now = Date.now();
@@ -126,8 +128,14 @@ export function AgentChat() {
     return threads.find((thread) => thread.id === activeThreadId) ?? null;
   }, [threads, activeThreadId]);
 
-  const messages = activeThread?.messages ?? [];
-  const todos = activeThread?.todos ?? [];
+  const messages = useMemo(
+    () => activeThread?.messages ?? EMPTY_MESSAGES,
+    [activeThread]
+  );
+  const todos = useMemo(
+    () => activeThread?.todos ?? EMPTY_TODOS,
+    [activeThread]
+  );
 
   const contextUsage = useMemo(() => {
     const totalCharacters = messages.reduce(
