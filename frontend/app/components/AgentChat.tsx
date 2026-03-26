@@ -170,6 +170,11 @@ export function AgentChat() {
     return "connecting" as const;
   }, [error, health, uiMeta]);
 
+  const activeSidebarCount = useMemo(
+    () => todos.filter((todo) => todo.status === "in_progress").length,
+    [todos]
+  );
+
   const appendNotice = useCallback((label: string, value: string) => {
     setRuntimeNotices((current) => {
       const next = [
@@ -656,25 +661,25 @@ export function AgentChat() {
   }, [panel]);
 
   return (
-    <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#25173c_0%,#0b0915_32%,#05070d_62%,#010204_100%)] text-white">
+    <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(84,70,190,0.24)_0%,rgba(10,12,20,0)_34%),linear-gradient(180deg,#04050a_0%,#070910_46%,#030409_100%)] text-white">
       <motion.div
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(132,94,194,0.12),transparent_28%,rgba(0,0,0,0.22)_100%)]"
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(122,106,219,0.08),transparent_24%,rgba(0,0,0,0.16)_100%)]"
         animate={
           reducedMotion
             ? { opacity: 1 }
-            : { opacity: [0.86, 1, 0.88], scale: [1, 1.018, 1] }
+            : { opacity: [0.9, 1, 0.92], scale: [1, 1.012, 1] }
         }
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.16),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(96,165,250,0.12),transparent_25%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.04),transparent_30%)]"
+        className="absolute inset-0 opacity-60 [background-image:radial-gradient(circle_at_20%_18%,rgba(139,116,255,0.12),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(96,165,250,0.08),transparent_24%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.03),transparent_30%)]"
         animate={
           reducedMotion
-            ? { opacity: 0.7 }
+            ? { opacity: 0.6 }
             : {
-                opacity: [0.52, 0.8, 0.6],
-                x: [0, 10, -8, 0],
-                y: [0, -6, 4, 0],
+                opacity: [0.48, 0.66, 0.54],
+                x: [0, 6, -4, 0],
+                y: [0, -4, 2, 0],
               }
         }
         transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
@@ -691,69 +696,80 @@ export function AgentChat() {
         onOpenOverlay={(kind) => setOverlay(kind)}
       />
 
-      <div className="relative flex min-h-screen flex-col px-4 pb-10 pt-12 sm:px-6 lg:px-10">
-        <div className="relative flex min-h-[72vh] items-start justify-center">
-          <div className="absolute inset-x-0 top-0 h-[78vh]">
+      <div className="relative flex min-h-screen flex-col px-4 pb-10 pt-12 sm:px-6 lg:px-8">
+        <div className="relative flex min-h-[76vh] items-start justify-center">
+          <div className="absolute inset-x-0 top-0 h-[70vh]">
             <OrbScene
               mode={orbMode}
-              identity={uiMeta?.identity ?? null}
               contextRatio={contextUsage / 100}
-              health={health}
               echoes={subagentEchoes}
               reducedMotion={reducedMotion}
             />
           </div>
 
-          <div className="relative z-10 flex w-full max-w-7xl flex-col items-center pt-[22vh] sm:pt-[24vh]">
+          <div className="relative z-10 flex w-full max-w-6xl flex-col items-center pt-[10rem] sm:pt-[11rem]">
             <motion.div
               initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: "easeOut" }}
               className="w-full"
             >
-              <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
-                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-1 font-mono text-[10px] uppercase tracking-[0.45em] text-white/55 backdrop-blur-xl">
-                  Sleeping Colossus
+              <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+                <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-1 font-mono text-[10px] uppercase tracking-[0.34em] text-white/50 backdrop-blur-xl">
+                  Orb command core
                 </div>
-                <h1 className="mt-6 font-serif text-4xl tracking-[0.08em] text-white/92 sm:text-5xl lg:text-6xl">
-                  Arc inhabits the chamber.
+                <h1 className="mt-5 text-4xl font-semibold tracking-[0.02em] text-white/94 sm:text-5xl">
+                  Arc stays centered while the work materializes around it.
                 </h1>
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-white/58 sm:text-base">
-                  Orb-first operator surface with summoned telemetry, decaying discourse,
-                  deep-focus overlays, and Framer Motion choreography layered over a custom
-                  Three.js field.
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-white/56 sm:text-base">
+                  The orb remains the anchor. Messages decay, telemetry stays close,
+                  and secondary panels arrive only when the runtime has something worth surfacing.
                 </p>
               </div>
             </motion.div>
 
-            <div className="mt-16 grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="relative min-h-[20rem]">
+            <div className="relative mt-10 flex w-full justify-center">
+              <div className="pointer-events-none absolute left-0 top-4 hidden w-[21rem] xl:block">
+                <AnimatePresence mode="wait">
+                  {panel === "plan" && (
+                    <PlanConstellation
+                      key="plan"
+                      todos={todos}
+                      visible={true}
+                      onClose={() => setPanel("telemetry")}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="relative min-h-[26rem] w-full max-w-3xl rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,rgba(9,12,20,0.44),rgba(6,9,15,0.24))] p-5 backdrop-blur-[10px]">
+                <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent" />
                 {visibleMessages.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0, y: reducedMotion ? 0 : 18 }}
                     animate={
                       reducedMotion
                         ? { opacity: 1, y: 0 }
-                        : { opacity: 1, y: [0, -4, 0] }
+                        : { opacity: 1, y: [0, -3, 0] }
                     }
                     transition={{
                       opacity: { duration: 0.6 },
                       y: { duration: 10, repeat: Infinity, ease: "easeInOut" },
                     }}
-                    className="pointer-events-auto relative z-10 flex h-full min-h-[18rem] flex-col items-center justify-center text-center"
+                    className="pointer-events-auto relative z-10 flex h-full min-h-[22rem] flex-col items-center justify-center text-center"
                   >
-                    <p className="font-mono text-xs uppercase tracking-[0.35em] text-white/35">
-                      Void-Native Stream
+                    <p className="font-mono text-xs uppercase tracking-[0.3em] text-white/34">
+                      Message stream
                     </p>
-                    <p className="mt-4 max-w-xl font-system-serif text-2xl text-white/75">
-                      The abyss remains mostly empty until a command rises.
+                    <p className="mt-4 max-w-xl text-2xl font-semibold tracking-[0.01em] text-white/78">
+                      The surface stays quiet until you ask Arc to work.
                     </p>
                     <motion.div
                       className="mt-8 flex flex-wrap justify-center gap-3"
                       animate={
                         reducedMotion
                           ? { opacity: 1 }
-                          : { y: [0, -6, 0], opacity: [0.9, 1, 0.92] }
+                          : { y: [0, -4, 0], opacity: [0.92, 1, 0.94] }
                       }
                       transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
                     >
@@ -765,7 +781,7 @@ export function AgentChat() {
                         <button
                           key={suggestion}
                           onClick={() => setInput(suggestion)}
-                          className="rounded-full border border-white/10 bg-white/4 px-4 py-2 text-sm text-white/60 transition hover:border-white/20 hover:bg-white/8 hover:text-white/88"
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/62 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white/88"
                         >
                           {suggestion}
                         </button>
@@ -783,7 +799,18 @@ export function AgentChat() {
                 )}
               </div>
 
-              <div className="relative min-h-[20rem]">
+              <div className="pointer-events-none absolute right-0 top-4 hidden w-[22rem] xl:block">
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
+                      Summoned panel
+                    </p>
+                    <h2 className="mt-1 text-sm font-medium text-white/78">{summonedTitle}</h2>
+                  </div>
+                  <div className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-white/44">
+                    {activeSidebarCount > 0 ? `${activeSidebarCount} active` : connectionStatus}
+                  </div>
+                </div>
                 <AnimatePresence mode="wait">
                   {panel === "telemetry" && (
                     <TelemetryPanel
@@ -796,14 +823,6 @@ export function AgentChat() {
                       runtimeNotices={runtimeNotices}
                     />
                   )}
-                  {panel === "plan" && (
-                    <PlanConstellation
-                      key="plan"
-                      todos={todos}
-                      visible={true}
-                      onClose={() => setPanel("telemetry")}
-                    />
-                  )}
                   {panel === "tools" && (
                     <ToolFilament
                       key="tools"
@@ -813,15 +832,56 @@ export function AgentChat() {
                 </AnimatePresence>
               </div>
             </div>
+
+            <div className="mt-6 w-full max-w-3xl xl:hidden">
+              <div className="mb-3 flex items-center justify-between px-1">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
+                    Summoned panel
+                  </p>
+                  <h2 className="mt-1 text-sm font-medium text-white/78">{summonedTitle}</h2>
+                </div>
+                <div className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-white/44">
+                  {activeSidebarCount > 0 ? `${activeSidebarCount} active` : connectionStatus}
+                </div>
+              </div>
+              <AnimatePresence mode="wait">
+                {panel === "telemetry" && (
+                  <TelemetryPanel
+                    key="telemetry-mobile"
+                    identity={uiMeta?.identity ?? null}
+                    health={health}
+                    connectionStatus={connectionStatus}
+                    contextRatio={contextUsage / 100}
+                    isStreaming={isStreaming}
+                    runtimeNotices={runtimeNotices}
+                  />
+                )}
+                {panel === "plan" && (
+                  <PlanConstellation
+                    key="plan-mobile"
+                    todos={todos}
+                    visible={true}
+                    onClose={() => setPanel("telemetry")}
+                  />
+                )}
+                {panel === "tools" && (
+                  <ToolFilament
+                    key="tools-mobile"
+                    tools={toolCalls}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
         <motion.div
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-[radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_50%)] opacity-80"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-[radial-gradient(circle_at_bottom,rgba(255,255,255,0.05),transparent_50%)] opacity-70"
           animate={
             reducedMotion
-              ? { opacity: 0.8 }
-              : { opacity: [0.55, 0.92, 0.6], scaleY: [1, 1.08, 1] }
+              ? { opacity: 0.7 }
+              : { opacity: [0.48, 0.72, 0.54], scaleY: [1, 1.05, 1] }
           }
           transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
         />

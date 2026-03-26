@@ -14,31 +14,31 @@ function messageVisuals(message: ArcMessage) {
   const isUser = message.role === "user";
   if (message.pinned) {
     return {
-      glow: "0 0 0 1px rgba(221,214,254,0.35), 0 0 36px rgba(167,139,250,0.22)",
-      label: "Crystallized",
+      glow: "0 0 0 1px rgba(221,214,254,0.24), 0 20px 42px rgba(8,12,20,0.22)",
+      label: "Pinned",
       className:
-        "border border-violet-400/30 bg-white/[0.05] text-zinc-100 backdrop-blur-xl",
+        "border border-violet-300/26 bg-white/[0.05] text-zinc-100 backdrop-blur-xl",
     };
   }
   if (isUser) {
     return {
-      glow: "0 0 24px rgba(56,189,248,0.14)",
-      label: "Operator",
+      glow: "0 16px 30px rgba(9,20,34,0.18)",
+      label: "You",
       className:
-        "border border-cyan-400/20 bg-cyan-300/[0.05] text-zinc-100 backdrop-blur-md",
+        "border border-cyan-400/18 bg-cyan-300/[0.05] text-zinc-100 backdrop-blur-md",
     };
   }
   if (message.importance >= 0.75) {
     return {
-      glow: "0 0 30px rgba(216,180,254,0.18)",
-      label: "Architectural",
+      glow: "0 18px 36px rgba(10,14,22,0.2)",
+      label: "Arc",
       className:
         "border border-violet-300/20 bg-violet-300/[0.045] text-zinc-100 backdrop-blur-md",
     };
   }
   return {
-    glow: "0 0 20px rgba(148,163,184,0.08)",
-    label: "Transient",
+    glow: "0 14px 28px rgba(8,12,20,0.14)",
+    label: "Arc",
     className:
       "border border-white/8 bg-white/[0.03] text-zinc-200 backdrop-blur-md",
   };
@@ -46,8 +46,8 @@ function messageVisuals(message: ArcMessage) {
 
 export function DecayStream({ messages, onPin }: DecayStreamProps) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[26vh] z-20 mx-auto flex h-[42vh] w-full max-w-6xl items-start justify-center px-4">
-      <div className="flex w-full max-w-4xl flex-col items-center gap-3">
+    <div className="pointer-events-none relative z-20 mx-auto flex h-full min-h-[24rem] w-full items-start justify-center px-1">
+      <div className="flex w-full max-w-3xl flex-col gap-3">
         <AnimatePresence initial={false}>
           {messages.map((message, index) => {
             const visuals = messageVisuals(message);
@@ -59,18 +59,18 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
                 animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                 exit={{ opacity: 0, y: -26, scale: 0.97, filter: "blur(20px)" }}
                 transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                className={`pointer-events-auto w-full max-w-3xl overflow-hidden rounded-[1.75rem] ${visuals.className}`}
+                className={`pointer-events-auto w-full overflow-hidden rounded-[1.5rem] ${visuals.className}`}
                 style={{
                   boxShadow: visuals.glow,
                   transformOrigin: "50% 0%",
                 }}
               >
-                <div className="flex items-center justify-between border-b border-white/8 px-4 py-3 text-[10px] uppercase tracking-[0.32em] text-zinc-400">
+                <div className="flex items-center justify-between border-b border-white/8 px-4 py-3 text-[10px] uppercase tracking-[0.24em] text-zinc-400">
                   <div className="flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-white/45" />
                     <span>{visuals.label}</span>
                     {message.node ? (
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] tracking-[0.2em] text-zinc-500">
+                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] tracking-[0.16em] text-zinc-500">
                         {message.node}
                       </span>
                     ) : null}
@@ -80,22 +80,22 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
                     <button
                       type="button"
                       onClick={() => onPin(message.id)}
-                      className="rounded-full border border-white/10 px-2 py-1 text-[9px] tracking-[0.2em] text-zinc-300 transition hover:border-white/20 hover:text-white"
+                      className="rounded-full border border-white/10 px-2 py-1 text-[9px] tracking-[0.16em] text-zinc-300 transition hover:border-white/20 hover:text-white"
                     >
-                      {message.pinned ? "Pinned" : "Crystallize"}
+                      {message.pinned ? "Pinned" : "Pin"}
                     </button>
                   </div>
                 </div>
                 <div className="space-y-3 px-5 py-4">
-                  <ArcMarkdown content={message.content || "Arc is gathering light..."} />
+                  <ArcMarkdown content={message.content || "Arc is thinking..."} />
                   {message.toolCalls.length > 0 ? (
                     <div className="grid gap-2 md:grid-cols-2">
                       {message.toolCalls.map((tool) => (
                         <div
                           key={tool.id}
-                          className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3"
+                          className="rounded-[1.1rem] border border-white/8 bg-black/18 px-3 py-3"
                         >
-                          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+                          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                             <span>{tool.name}</span>
                             <span>{tool.status}</span>
                           </div>

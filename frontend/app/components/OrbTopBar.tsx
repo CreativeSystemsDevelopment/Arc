@@ -41,6 +41,12 @@ function orbLabel(mode: OrbMode) {
   }
 }
 
+function healthDot(status: HealthPayload["status"] | undefined) {
+  if (status === "critical") return "bg-rose-400";
+  if (status === "warning") return "bg-amber-300";
+  return "bg-emerald-300";
+}
+
 export function OrbTopBar({
   meta,
   health,
@@ -51,138 +57,80 @@ export function OrbTopBar({
   onOpenThreads,
   onOpenOverlay,
 }: OrbTopBarProps) {
+  const modelLabel = meta?.identity.model?.split(":").pop() ?? "runtime";
+  const trimmedThread = activeThread?.title?.trim() || "Untitled";
+
   return (
     <motion.header
       initial={{ opacity: 0, y: -18 }}
-      animate={{
-        opacity: 1,
-        y: [0, -2, 0],
-      }}
-      transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-      className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-4 sm:px-8 sm:pt-6"
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-4 sm:px-6 sm:pt-5"
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 text-[11px] uppercase tracking-[0.28em] text-white/55 sm:flex-row sm:items-start sm:justify-between">
-        <motion.div
-          animate={{
-            boxShadow: [
-              "0 0 0 rgba(96,165,250,0.00)",
-              "0 0 26px rgba(96,165,250,0.10)",
-              "0 0 0 rgba(96,165,250,0.00)",
-            ],
-          }}
-          transition={{ duration: 7.5, repeat: Infinity, ease: "easeInOut" }}
-          className="pointer-events-auto flex items-center gap-4 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 backdrop-blur-xl"
-        >
-          <div className="space-y-0.5">
-            <p className="font-mono text-[10px] tracking-[0.34em] text-white/45">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-[1.75rem] border border-white/10 bg-[rgba(7,11,19,0.56)] px-4 py-3 text-[11px] uppercase tracking-[0.24em] text-white/58 shadow-[0_18px_60px_rgba(0,0,0,0.24)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-4">
+          <div className="space-y-1">
+            <p className="font-mono text-[10px] tracking-[0.3em] text-white/38">
               {meta?.identity.subtitle ?? "Agent of Agents"}
             </p>
-            <div className="flex items-center gap-3">
-              <h1 className="font-display text-lg normal-case tracking-[0.16em] text-white/92">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-base font-semibold normal-case tracking-[0.08em] text-white/92">
                 {meta?.identity.name ?? "Arc"}
               </h1>
-              <span className="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[10px] tracking-[0.24em] text-white/55">
-                {orbLabel(orbMode)}
+              <span className="rounded-full border border-white/10 px-2.5 py-1 font-mono text-[10px] tracking-[0.22em] text-white/48">
+                {modelLabel}
               </span>
             </div>
           </div>
 
-          <div className="hidden h-8 w-px bg-white/10 sm:block" />
+          <div className="hidden h-8 w-px bg-white/10 md:block" />
 
-          <div className="hidden min-w-[200px] gap-3 sm:flex sm:flex-col">
-            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.24em] text-white/45">
-              <span>Context</span>
-              <span>{contextPercent}%</span>
+          <div className="hidden min-w-[220px] gap-2 md:flex md:flex-col">
+            <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.22em] text-white/40">
+              <span>{orbLabel(orbMode)}</span>
+              <span>{contextPercent}% context</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
               <motion.div
                 className={`h-full rounded-full bg-gradient-to-r ${meterTone(contextPercent)}`}
                 animate={{ width: `${Math.max(contextPercent, 4)}%` }}
-                transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
               />
             </div>
           </div>
-        </motion.div>
+        </div>
 
-        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
-          <StatusChip
-            label="Health"
-            value={health?.status ?? "syncing"}
-            glow={
-              health?.status === "critical"
-                ? "rose"
-                : health?.status === "warning"
-                  ? "amber"
-                  : "emerald"
-            }
-          />
-          <StatusChip
-            label="APCMS"
-            value={meta?.topbar.apcms_status ?? "disabled"}
-            glow="violet"
-          />
-          <StatusChip
-            label="Children"
-            value={String(subagentEchos.length)}
-            glow="sky"
-          />
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2 md:justify-end">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-white/52">
+            <span className={`h-2 w-2 rounded-full ${healthDot(health?.status)}`} />
+            <span>{health?.status ?? "syncing"}</span>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-white/52">
+            {subagentEchos.length > 0 ? `${subagentEchos.length} active` : "APCMS off"}
+          </div>
           <button
             type="button"
             onClick={onOpenThreads}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-[10px] tracking-[0.24em] text-white/65 transition hover:border-white/20 hover:text-white"
+            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-white/62 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white"
           >
-            {activeThread ? `Thread ${activeThread.id.slice(-4)}` : "Threads"}
+            {trimmedThread.length > 22 ? `${trimmedThread.slice(0, 22)}…` : trimmedThread}
           </button>
           <button
             type="button"
             onClick={() => onOpenOverlay("skills")}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-[10px] tracking-[0.24em] text-white/65 transition hover:border-white/20 hover:text-white"
+            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-white/62 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white"
           >
             Skills
           </button>
           <button
             type="button"
-            onClick={() => onOpenOverlay("memories")}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-[10px] tracking-[0.24em] text-white/65 transition hover:border-white/20 hover:text-white"
-          >
-            Memories
-          </button>
-          <button
-            type="button"
             onClick={() => onOpenOverlay("config")}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-[10px] tracking-[0.24em] text-white/65 transition hover:border-white/20 hover:text-white"
+            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-white/62 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white"
           >
             Config
           </button>
         </div>
       </div>
     </motion.header>
-  );
-}
-
-function StatusChip({
-  label,
-  value,
-  glow,
-}: {
-  label: string;
-  value: string;
-  glow: "emerald" | "amber" | "rose" | "violet" | "sky";
-}) {
-  const glowClass = {
-    emerald: "from-emerald-200/20 to-emerald-400/5 text-emerald-100/80",
-    amber: "from-amber-200/20 to-amber-400/5 text-amber-100/80",
-    rose: "from-rose-200/20 to-rose-400/5 text-rose-100/80",
-    violet: "from-violet-200/20 to-violet-400/5 text-violet-100/80",
-    sky: "from-sky-200/20 to-sky-400/5 text-sky-100/80",
-  }[glow];
-
-  return (
-    <div
-      className={`rounded-full border border-white/10 bg-gradient-to-r ${glowClass} px-3 py-2 font-mono text-[10px] tracking-[0.24em]`}
-    >
-      <span className="text-white/40">{label}</span>
-      <span className="ml-2 text-white/80">{value}</span>
-    </div>
   );
 }

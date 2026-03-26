@@ -63,10 +63,10 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                   ease: "easeInOut",
                 }
           }
-          className="mx-auto flex max-w-5xl flex-col gap-3"
+          className="mx-auto flex max-w-4xl flex-col gap-3"
         >
-          <div className="flex items-center justify-between px-2 text-[10px] uppercase tracking-[0.38em] text-white/45">
-            <span>Operator anchor</span>
+          <div className="flex items-center justify-between px-2 text-[10px] uppercase tracking-[0.3em] text-white/40">
+            <span>Input conduit</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -105,18 +105,17 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                     ease: "easeInOut",
                   }
             }
-            className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(9,12,22,0.82),rgba(6,8,15,0.94))] px-5 py-4 shadow-[0_-18px_70px_rgba(54,27,108,0.18)] backdrop-blur-2xl"
+            className="relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.92),rgba(7,10,17,0.96))] px-5 py-4 shadow-[0_-12px_50px_rgba(0,0,0,0.22)] backdrop-blur-2xl"
           >
-            <div className="pointer-events-none absolute inset-x-[8%] top-0 h-px bg-gradient-to-r from-transparent via-violet-300/60 to-transparent" />
-            <div className="pointer-events-none absolute left-1/2 top-0 h-16 w-px -translate-x-1/2 bg-gradient-to-b from-violet-300/60 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-[8%] top-0 h-px bg-gradient-to-r from-transparent via-white/28 to-transparent" />
             <motion.div
-              className="pointer-events-none absolute inset-x-[14%] -bottom-10 h-16 rounded-full bg-[radial-gradient(circle,rgba(149,128,255,0.28),transparent_68%)] blur-2xl"
+              className="pointer-events-none absolute inset-x-[18%] -bottom-10 h-14 rounded-full bg-[radial-gradient(circle,rgba(132,150,255,0.14),transparent_70%)] blur-2xl"
               animate={
                 reducedMotion
                   ? { opacity: 0.4 }
                   : {
-                      opacity: [0.18, 0.42, 0.18],
-                      scaleX: [0.9, 1.08, 0.9],
+                      opacity: [0.16, 0.28, 0.16],
+                      scaleX: [0.94, 1.04, 0.94],
                     }
               }
               transition={{
@@ -130,7 +129,7 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
               Message Arc
             </label>
             <div className="flex items-end gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/6 text-white/70">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/66">
                 <svg
                   className="h-5 w-5"
                   viewBox="0 0 24 24"
@@ -157,13 +156,13 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                   }}
                   disabled={isStreaming}
                   rows={1}
-                  placeholder="Message Arc through the conduit..."
-                  className="max-h-40 min-h-[52px] w-full resize-none bg-transparent text-[15px] leading-7 text-white placeholder:text-white/35 focus:outline-none disabled:opacity-60"
+                  placeholder="Message Arc..."
+                  className="max-h-40 min-h-[52px] w-full resize-none bg-transparent text-[15px] leading-7 text-white placeholder:text-white/34 focus:outline-none disabled:opacity-60"
                 />
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/38">
-                  <span>Enter to transmit</span>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/36">
+                  <span>Enter to send</span>
                   <span className="text-white/18">/</span>
-                  <span>Slash commands reveal summoned structures</span>
+                  <span>Use slash commands for plan, files, health, and threads</span>
                 </div>
               </div>
 
@@ -172,9 +171,9 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                 disabled={isStreaming || !input.trim()}
                 whileHover={reducedMotion ? undefined : { scale: 1.02 }}
                 whileTap={reducedMotion ? undefined : { scale: 0.97 }}
-                className="inline-flex h-12 shrink-0 items-center justify-center rounded-full border border-violet-300/30 bg-white/10 px-6 text-[11px] uppercase tracking-[0.34em] text-white transition hover:border-violet-300/50 hover:bg-white/14 disabled:cursor-not-allowed disabled:opacity-35"
+                className="inline-flex h-12 shrink-0 items-center justify-center rounded-full border border-white/14 bg-white/[0.06] px-6 text-[11px] uppercase tracking-[0.28em] text-white transition hover:border-white/24 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"
               >
-                {isStreaming ? "Receiving" : "Transmit"}
+                {isStreaming ? "Working" : "Send"}
               </motion.button>
             </div>
           </motion.form>
@@ -186,7 +185,7 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 exit={{ opacity: 0, y: 12, filter: "blur(10px)" }}
                 transition={{ duration: reducedMotion ? 0.15 : 0.3 }}
-                className="mx-auto grid w-full max-w-4xl gap-2 rounded-[1.75rem] border border-white/10 bg-slate-950/82 p-3 shadow-[0_-20px_60px_rgba(80,62,180,0.18)] backdrop-blur-xl"
+                className="mx-auto grid w-full max-w-4xl gap-2 rounded-[1.6rem] border border-white/10 bg-slate-950/88 p-3 shadow-[0_-18px_52px_rgba(0,0,0,0.22)] backdrop-blur-xl"
               >
                 {filteredCommands.slice(0, 6).map((command) => (
                   <button
@@ -200,14 +199,14 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                       }
                       setInput(`${command.label} `);
                     }}
-                    className="flex items-start justify-between rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left transition hover:border-violet-300/20 hover:bg-white/[0.05]"
+                    className="flex items-start justify-between rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/14 hover:bg-white/[0.05]"
                   >
                     <div>
-                      <p className="font-mono text-xs text-violet-100">{command.label}</p>
+                      <p className="font-mono text-xs text-white/84">{command.label}</p>
                       <p className="mt-1 text-xs text-white/55">{command.description}</p>
                     </div>
                     <span className="mt-0.5 text-[10px] uppercase tracking-[0.28em] text-white/30">
-                      summon
+                      run
                     </span>
                   </button>
                 ))}
