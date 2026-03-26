@@ -576,3 +576,31 @@ At minimum `OPENROUTER_API_KEY` must be set as an environment variable. The defa
 ### SSE event protocol
 
 The backend streams structured Server-Sent Events to the frontend. Event types: `status`, `message`, `tool_call`, `tool_result`, `todos`, `error`, `done`. See `backend/src/routes.py` for details.
+
+### Arc Deep Zero agent architecture
+
+The agent is "Arc (Archimedes)" — an enterprise AI architect. Key backend modules:
+
+| Module | Purpose |
+|---|---|
+| `src/agent.py` | Wires the complete agent with all tools, middleware, subagents |
+| `src/prompt.py` | Full system prompt defining Arc's identity and operating principles |
+| `src/middleware.py` | Audit log, research gate, self-maintenance middleware |
+| `src/tools/vm_health.py` | VM health check, disk usage, process listing (psutil) |
+| `src/tools/reflection.py` | write_reflection and create_skill for self-improvement |
+| `src/tools/search.py` | Web search via Tavily/LangChain |
+| `src/subagents/researcher.py` | Research-first subagent (always delegates before implementing) |
+| `src/subagents/coder.py` | Code writing/debugging subagent |
+| `src/subagents/doc_extraction.py` | PDF/OCR/diagram extraction subagent |
+| `src/subagents/uiux.py` | React/Next.js/Tailwind frontend subagent |
+
+### UI architecture (planned 5-zone layout)
+
+See uploaded `arc_ui_component_architecture.md` for the full spec. The 5 zones are:
+1. **TopBar**: Agent identity, XP/tier badge, context meter, VM health pulse
+2. **Sidebar**: Navigation (Chat, Plan, Files, Skills, Memories, Agents, Terminal, Settings)
+3. **Main Panel**: Conversation stream with tool-specific renderers, HITL approval overlays
+4. **Context Panel**: Contextual detail for selected items
+5. **Input Bar**: Message input with slash commands and keyboard shortcuts
+
+All UI components are custom-built to match Deep Agent framework features (tool call cards, todo panels, subagent dashboards, etc.).
