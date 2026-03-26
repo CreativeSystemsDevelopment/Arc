@@ -699,7 +699,6 @@ export function AgentChat() {
             <OrbScene
               mode={orbMode}
               contextRatio={contextUsage / 100}
-              echoes={subagentEchoes}
               reducedMotion={reducedMotion}
             />
           </div>
@@ -747,8 +746,18 @@ export function AgentChat() {
           </div>
 
           <div className="min-h-0">
-            <div className="glass-panel relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem]">
+            <div className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(7,10,16,0.18)_0%,rgba(5,8,13,0.32)_18%,rgba(3,5,9,0.54)_42%,rgba(2,3,6,0.92)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[14px]">
               <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-[10%] top-0 bottom-0 [clip-path:polygon(22%_0%,78%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.012)_18%,rgba(255,255,255,0.0)_38%,rgba(0,0,0,0.0)_100%)] opacity-80" />
+              <div
+                className="pointer-events-none absolute left-[18%] top-0 bottom-0 w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.18),rgba(255,255,255,0.04),transparent)] opacity-44"
+                style={{ transform: "skewX(22deg)", transformOrigin: "top" }}
+              />
+              <div
+                className="pointer-events-none absolute right-[18%] top-0 bottom-0 w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.18),rgba(255,255,255,0.04),transparent)] opacity-44"
+                style={{ transform: "skewX(-22deg)", transformOrigin: "top" }}
+              />
+              <div className="pointer-events-none absolute inset-x-[16%] bottom-[18%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.2),transparent)]" />
               <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
                 <div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
@@ -802,7 +811,12 @@ export function AgentChat() {
 
           <div className="min-h-0">
             <AnimatePresence mode="wait">
-              {panel === "telemetry" && (
+              {panel === "tools" ? (
+                <ToolFilament
+                  key="tools"
+                  tools={toolCalls}
+                />
+              ) : (
                 <TelemetryPanel
                   key="telemetry"
                   identity={uiMeta?.identity ?? null}
@@ -813,23 +827,17 @@ export function AgentChat() {
                   runtimeNotices={runtimeNotices}
                 />
               )}
-              {panel === "tools" && (
-                <ToolFilament
-                  key="tools"
-                  tools={toolCalls}
-                />
-              )}
-              {panel === "plan" && (
-                <div className="xl:hidden">
-                  <PlanConstellation
-                    key="plan-mobile"
-                    todos={todos}
-                    visible={true}
-                    onClose={() => setPanel("telemetry")}
-                  />
-                </div>
-              )}
             </AnimatePresence>
+            {panel === "plan" && (
+              <div className="mt-3 xl:hidden">
+                <PlanConstellation
+                  key="plan-mobile"
+                  todos={todos}
+                  visible={true}
+                  onClose={() => setPanel("telemetry")}
+                />
+              </div>
+            )}
           </div>
         </div>
 

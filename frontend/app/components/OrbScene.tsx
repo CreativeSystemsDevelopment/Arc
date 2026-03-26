@@ -240,7 +240,7 @@ export function OrbScene({
         transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      <div className="absolute inset-x-0 top-[28vh] h-px bg-[linear-gradient(to_right,transparent,rgba(187,198,229,0.2),transparent)]" />
+      <div className="absolute inset-x-0 top-[28vh] h-px bg-[linear-gradient(to_right,transparent,rgba(187,198,229,0.34),transparent)]" />
 
       <motion.div
         className="absolute inset-x-[-8%] top-[28vh] bottom-[-18vh]"
@@ -256,12 +256,29 @@ export function OrbScene({
           style={{
             clipPath: "polygon(28% 0%, 72% 0%, 100% 100%, 0% 100%)",
             background:
-              "linear-gradient(180deg, rgba(14,16,24,0.06) 0%, rgba(7,9,14,0.44) 18%, rgba(4,5,9,0.78) 52%, rgba(2,3,6,0.98) 100%)",
+              "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 8%, rgba(8,10,16,0.32) 26%, rgba(5,7,12,0.82) 56%, rgba(1,2,5,1) 100%)",
             boxShadow:
-              "inset 0 1px 0 rgba(255,255,255,0.06), inset 0 80px 180px rgba(255,255,255,0.015), 0 -40px 140px rgba(0,0,0,0.48)",
+              "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 120px 240px rgba(255,255,255,0.018), 0 -40px 140px rgba(0,0,0,0.56)",
           }}
         />
       </motion.div>
+
+      <div
+        className="absolute left-[18%] top-[28vh] bottom-[-8vh] w-[2px] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.36),rgba(255,255,255,0.08),transparent)] opacity-72"
+        style={{ transform: "skewX(24deg)", transformOrigin: "top" }}
+      />
+      <div
+        className="absolute right-[18%] top-[28vh] bottom-[-8vh] w-[2px] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.36),rgba(255,255,255,0.08),transparent)] opacity-72"
+        style={{ transform: "skewX(-24deg)", transformOrigin: "top" }}
+      />
+      <div
+        className="absolute left-[30%] top-[28vh] bottom-[4vh] w-px bg-[linear-gradient(to_bottom,rgba(186,198,255,0.18),rgba(255,255,255,0.02),transparent)] opacity-55"
+        style={{ transform: "skewX(16deg)", transformOrigin: "top" }}
+      />
+      <div
+        className="absolute right-[30%] top-[28vh] bottom-[4vh] w-px bg-[linear-gradient(to_bottom,rgba(186,198,255,0.18),rgba(255,255,255,0.02),transparent)] opacity-55"
+        style={{ transform: "skewX(-16deg)", transformOrigin: "top" }}
+      />
 
       <motion.div
         className="absolute inset-x-[12%] top-[30vh] h-24 rounded-[50%] bg-[radial-gradient(circle,rgba(255,255,255,0.06),rgba(182,194,255,0.015),transparent_74%)] blur-3xl"
@@ -271,6 +288,15 @@ export function OrbScene({
             : { opacity: [0.16, 0.34, 0.18], scaleX: [0.94, 1.04, 0.96] }
         }
         transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute inset-x-[18%] bottom-[6vh] h-20 rounded-[50%] bg-[radial-gradient(circle,rgba(255,255,255,0.09),rgba(140,156,255,0.028),transparent_72%)] blur-[42px]"
+        animate={
+          reducedMotion
+            ? { opacity: 0.34 }
+            : { opacity: [0.2, 0.38, 0.22], scaleX: [0.94, 1.08, 0.96] }
+        }
+        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
       />
 
       <Canvas
