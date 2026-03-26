@@ -65,9 +65,9 @@ export function OrbTopBar({
       initial={{ opacity: 0, y: -18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-      className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-4 sm:px-6 sm:pt-5"
+      className="pointer-events-none fixed inset-x-0 top-0 z-30 px-3 pt-3 sm:px-4 sm:pt-4"
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 rounded-[1.75rem] border border-white/10 bg-[rgba(7,11,19,0.56)] px-4 py-3 text-[11px] uppercase tracking-[0.24em] text-white/58 shadow-[0_18px_60px_rgba(0,0,0,0.24)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
+      <div className="flex w-full flex-col gap-3 rounded-[1.35rem] border border-white/10 bg-[rgba(7,11,19,0.72)] px-4 py-3 text-[11px] uppercase tracking-[0.24em] text-white/58 shadow-[0_18px_60px_rgba(0,0,0,0.24)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
         <div className="pointer-events-auto flex min-w-0 items-center gap-4">
           <div className="space-y-1">
             <p className="font-mono text-[10px] tracking-[0.3em] text-white/38">

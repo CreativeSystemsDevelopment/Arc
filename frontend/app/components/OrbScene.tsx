@@ -1,16 +1,15 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-import type { OrbMode, SubagentEcho } from "./types";
+import type { OrbMode } from "./types";
 
 interface OrbSceneProps {
   mode: OrbMode;
   contextRatio: number;
-  echoes: SubagentEcho[];
   reducedMotion: boolean;
 }
 
@@ -167,7 +166,7 @@ function OrbCore({
     }
 
     if (reflectionRef.current) {
-      reflectionRef.current.position.y = -3.1 - idleWave * 0.14;
+      reflectionRef.current.position.y = -1.3 - idleWave * 0.12;
       reflectionRef.current.scale.set(
         1 + Math.abs(idleWave) * 0.04,
         0.7 + Math.abs(shimmerWave) * 0.08,
@@ -183,60 +182,46 @@ function OrbCore({
   });
 
   return (
-    <group position={[0, 0.2, 0]}>
-      <mesh ref={meshRef}>
-        <icosahedronGeometry args={[1.56, 20]} />
-        <shaderMaterial
-          transparent
-          depthWrite={false}
-          uniforms={uniforms}
-          vertexShader={VERTEX_SHADER}
-          fragmentShader={FRAGMENT_SHADER}
-        />
-      </mesh>
+    <>
+      <group position={[0, 2.95, 0]}>
+        <mesh ref={meshRef}>
+          <icosahedronGeometry args={[2.18, 20]} />
+          <shaderMaterial
+            transparent
+            depthWrite={false}
+            uniforms={uniforms}
+            vertexShader={VERTEX_SHADER}
+            fragmentShader={FRAGMENT_SHADER}
+          />
+        </mesh>
+      </group>
 
       <mesh
         ref={reflectionRef}
-        position={[0, -3.1, -0.06]}
+        position={[0, -1.3, -0.06]}
         rotation={[-Math.PI / 2, 0, 0]}
       >
-        <circleGeometry args={[1.92, 64]} />
+        <circleGeometry args={[3.25, 72]} />
         <meshBasicMaterial color="#d9e0ff" transparent opacity={0.08} />
       </mesh>
 
-      <mesh ref={floorRef} position={[0, -3.26, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[3.6, 64]} />
-        <meshBasicMaterial color="#05070d" transparent opacity={0.03} />
+      <mesh ref={floorRef} position={[0, -1.62, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[9.2, 96]} />
+        <meshBasicMaterial color="#030409" transparent opacity={0.035} />
       </mesh>
-    </group>
+    </>
   );
-}
-
-function modeLabel(mode: OrbMode) {
-  switch (mode) {
-    case "thinking":
-      return "Thinking";
-    case "answering":
-      return "Responding";
-    case "paused":
-      return "Paused";
-    case "error":
-      return "Needs attention";
-    default:
-      return "Ready";
-  }
 }
 
 export function OrbScene({
   mode,
   contextRatio,
-  echoes,
   reducedMotion,
 }: OrbSceneProps) {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <motion.div
-        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_24%,rgba(135,122,255,0.16),transparent_30%),linear-gradient(to_bottom,rgba(0,0,0,0)_8%,rgba(4,6,10,0.08)_58%,rgba(3,5,9,0.34)_100%)]"
+        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-8%,rgba(135,122,255,0.22),transparent_28%),linear-gradient(to_bottom,rgba(0,0,0,0)_6%,rgba(4,6,10,0.04)_34%,rgba(3,5,9,0.22)_100%)]"
         animate={
           reducedMotion
             ? { opacity: 1 }
@@ -246,7 +231,7 @@ export function OrbScene({
       />
 
       <motion.div
-        className="absolute left-1/2 top-[34%] h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(220,225,255,0.16),rgba(108,118,190,0.08),transparent_72%)] blur-[72px]"
+        className="absolute left-1/2 top-[12%] h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(220,225,255,0.18),rgba(108,118,190,0.08),transparent_72%)] blur-[92px]"
         animate={
           reducedMotion
             ? { opacity: 0.5 }
@@ -255,17 +240,48 @@ export function OrbScene({
         transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      <div className="absolute left-1/2 top-[59%] h-px w-[min(42rem,72vw)] -translate-x-1/2 bg-[linear-gradient(to_right,transparent,rgba(187,198,229,0.24),transparent)]" />
+      <div className="absolute inset-x-0 top-[28vh] h-px bg-[linear-gradient(to_right,transparent,rgba(187,198,229,0.2),transparent)]" />
+
+      <motion.div
+        className="absolute inset-x-[-8%] top-[28vh] bottom-[-18vh]"
+        animate={
+          reducedMotion
+            ? { opacity: 0.96 }
+            : { opacity: [0.92, 1, 0.94] }
+        }
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <div
+          className="h-full w-full"
+          style={{
+            clipPath: "polygon(28% 0%, 72% 0%, 100% 100%, 0% 100%)",
+            background:
+              "linear-gradient(180deg, rgba(14,16,24,0.06) 0%, rgba(7,9,14,0.44) 18%, rgba(4,5,9,0.78) 52%, rgba(2,3,6,0.98) 100%)",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.06), inset 0 80px 180px rgba(255,255,255,0.015), 0 -40px 140px rgba(0,0,0,0.48)",
+          }}
+        />
+      </motion.div>
+
+      <motion.div
+        className="absolute inset-x-[12%] top-[30vh] h-24 rounded-[50%] bg-[radial-gradient(circle,rgba(255,255,255,0.06),rgba(182,194,255,0.015),transparent_74%)] blur-3xl"
+        animate={
+          reducedMotion
+            ? { opacity: 0.3 }
+            : { opacity: [0.16, 0.34, 0.18], scaleX: [0.94, 1.04, 0.96] }
+        }
+        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+      />
 
       <Canvas
-        camera={{ position: [0, 0, 5.6], fov: 36 }}
+        camera={{ position: [0, 0, 6.4], fov: 40 }}
         dpr={[1, 1.6]}
         className="absolute inset-0"
       >
         <ambientLight intensity={0.28} color="#dfe5ff" />
-        <directionalLight position={[0.8, 3.2, 3.6]} intensity={1.2} color="#f3f6ff" />
+        <directionalLight position={[0.8, 4.2, 3.6]} intensity={1.28} color="#f3f6ff" />
         <pointLight
-          position={[0, 1.1, 2.4]}
+          position={[0, 2.4, 2.8]}
           intensity={0.3}
           distance={8}
           color="#89a6ff"
@@ -276,46 +292,6 @@ export function OrbScene({
           reducedMotion={reducedMotion}
         />
       </Canvas>
-
-      <div className="absolute inset-x-0 bottom-8 flex justify-center">
-        <div className="rounded-full border border-white/8 bg-black/20 px-4 py-2 text-[11px] uppercase tracking-[0.34em] text-white/46 backdrop-blur-xl">
-          {modeLabel(mode)} · {Math.round(contextRatio * 100)}% context
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {echoes.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            className="absolute inset-x-0 bottom-24 flex justify-center px-4"
-          >
-            <div className="flex flex-wrap justify-center gap-3">
-              {echoes.slice(-3).map((echo) => (
-                <motion.div
-                  key={echo.id}
-                  initial={{ opacity: 0, scale: 0.94 }}
-                  animate={{
-                    opacity: echo.status === "completed" ? 0.62 : 0.92,
-                    scale: echo.status === "running" ? 1 : 0.98,
-                  }}
-                  exit={{ opacity: 0, scale: 0.92 }}
-                  transition={{ duration: 0.28, ease: "easeOut" }}
-                  className="rounded-full border border-white/10 bg-black/28 px-3 py-2 text-center backdrop-blur-xl"
-                >
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-white/38">
-                    {echo.status}
-                  </div>
-                  <div className="mt-1 text-[11px] font-medium tracking-[0.12em] text-white/78">
-                    {echo.name}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </div>
   );
 }
