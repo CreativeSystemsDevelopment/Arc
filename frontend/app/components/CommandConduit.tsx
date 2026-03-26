@@ -45,8 +45,24 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
       <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-30 px-4 pb-4 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: reducedMotion ? 0.2 : 0.5, ease: "easeOut" }}
+          animate={
+            reducedMotion
+              ? { opacity: 1, y: 0 }
+              : {
+                  opacity: 1,
+                  y: [0, -4, 0],
+                }
+          }
+          transition={
+            reducedMotion
+              ? { duration: 0.2, ease: "easeOut" }
+              : {
+                  duration: 9,
+                  repeat: Infinity,
+                  repeatType: "mirror",
+                  ease: "easeInOut",
+                }
+          }
           className="mx-auto flex max-w-5xl flex-col gap-3"
         >
           <div className="flex items-center justify-between px-2 text-[10px] uppercase tracking-[0.38em] text-white/45">
@@ -72,12 +88,43 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
           <motion.form
             onSubmit={onSubmit}
             initial={{ opacity: 0.8, scale: 0.99 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: reducedMotion ? 0.15 : 0.35 }}
+            animate={
+              reducedMotion
+                ? { opacity: 1, scale: 1 }
+                : {
+                    opacity: 1,
+                    scale: [1, 1.006, 1],
+                  }
+            }
+            transition={
+              reducedMotion
+                ? { duration: 0.15 }
+                : {
+                    duration: 6.5,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }
+            }
             className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(9,12,22,0.82),rgba(6,8,15,0.94))] px-5 py-4 shadow-[0_-18px_70px_rgba(54,27,108,0.18)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-[8%] top-0 h-px bg-gradient-to-r from-transparent via-violet-300/60 to-transparent" />
             <div className="pointer-events-none absolute left-1/2 top-0 h-16 w-px -translate-x-1/2 bg-gradient-to-b from-violet-300/60 to-transparent" />
+            <motion.div
+              className="pointer-events-none absolute inset-x-[14%] -bottom-10 h-16 rounded-full bg-[radial-gradient(circle,rgba(149,128,255,0.28),transparent_68%)] blur-2xl"
+              animate={
+                reducedMotion
+                  ? { opacity: 0.4 }
+                  : {
+                      opacity: [0.18, 0.42, 0.18],
+                      scaleX: [0.9, 1.08, 0.9],
+                    }
+              }
+              transition={{
+                duration: reducedMotion ? 0.2 : 5.8,
+                repeat: reducedMotion ? 0 : Infinity,
+                ease: "easeInOut",
+              }}
+            />
 
             <label htmlFor="arc-command-conduit" className="sr-only">
               Message Arc

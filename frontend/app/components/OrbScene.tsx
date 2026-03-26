@@ -82,6 +82,7 @@ function OrbCore({
   const meshRef = useRef<THREE.Mesh>(null);
   const shellRef = useRef<THREE.Mesh>(null);
   const floorRef = useRef<THREE.Mesh>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
 
   const uniforms = useMemo(
     () => ({
@@ -98,6 +99,10 @@ function OrbCore({
   useFrame((state, delta) => {
     const step = reducedMotion ? delta * 0.2 : delta;
     uniforms.uTime.value += step;
+    const idleWave = reducedMotion ? 0.015 : Math.sin(state.clock.elapsedTime * 0.58) * 0.045;
+    const shimmerWave = reducedMotion
+      ? 0.01
+      : Math.cos(state.clock.elapsedTime * 0.34) * 0.028;
 
     const colors = ORB_COLORS[mode];
     const targetEnergy =
@@ -123,12 +128,12 @@ function OrbCore({
 
     uniforms.uEnergy.value = THREE.MathUtils.lerp(
       uniforms.uEnergy.value,
-      targetEnergy + contextRatio * 0.35,
+      targetEnergy + contextRatio * 0.35 + idleWave,
       0.08
     );
     uniforms.uBrightness.value = THREE.MathUtils.lerp(
       uniforms.uBrightness.value,
-      targetBrightness,
+      targetBrightness + shimmerWave,
       0.08
     );
     uniforms.uError.value = THREE.MathUtils.lerp(
@@ -153,24 +158,43 @@ function OrbCore({
 
       meshRef.current.rotation.y += delta * (reducedMotion ? 0.05 : 0.12);
       meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.16) * 0.1;
+      meshRef.current.position.y = 0.04 + idleWave * 0.9;
       meshRef.current.scale.lerp(
-        new THREE.Vector3(targetScale, targetScale, targetScale),
+        new THREE.Vector3(
+          targetScale + idleWave * 0.45,
+          targetScale + shimmerWave * 0.35,
+          targetScale + idleWave * 0.45
+        ),
         0.08
       );
     }
 
     if (shellRef.current) {
       shellRef.current.rotation.z -= delta * 0.04;
-      shellRef.current.scale.setScalar(1.22 + uniforms.uEnergy.value * 0.03);
+      shellRef.current.position.y = 0.02 + shimmerWave * 0.55;
+      shellRef.current.scale.setScalar(
+        1.22 + uniforms.uEnergy.value * 0.03 + idleWave * 0.08
+      );
       const material = shellRef.current.material as THREE.MeshBasicMaterial;
-      material.opacity = 0.13 + uniforms.uBrightness.value * 0.05;
+      material.opacity = 0.13 + uniforms.uBrightness.value * 0.05 + Math.abs(shimmerWave) * 0.08;
       material.color.lerp(new THREE.Color(colors.secondary), 0.06);
+    }
+
+    if (haloRef.current) {
+      haloRef.current.rotation.z += delta * (reducedMotion ? 0.02 : 0.045);
+      haloRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.18) * 0.2;
+      haloRef.current.position.y = -0.02 + idleWave * 0.8;
+      haloRef.current.scale.setScalar(1 + Math.abs(idleWave) * 0.12);
+      const material = haloRef.current.material as THREE.MeshBasicMaterial;
+      material.opacity = 0.1 + uniforms.uBrightness.value * 0.04 + Math.abs(idleWave) * 0.08;
+      material.color.lerp(new THREE.Color(colors.primary), 0.08);
     }
 
     if (floorRef.current) {
       const material = floorRef.current.material as THREE.MeshBasicMaterial;
       const pulse = mode === "answering" ? 0.12 : mode === "thinking" ? 0.09 : 0.05;
-      material.opacity = pulse + contextRatio * 0.04;
+      floorRef.current.scale.setScalar(1.02 + Math.abs(idleWave) * 0.12);
+      material.opacity = pulse + contextRatio * 0.04 + Math.abs(shimmerWave) * 0.05;
     }
   });
 
@@ -194,6 +218,15 @@ function OrbCore({
           transparent
           opacity={0.12}
           wireframe
+        />
+      </mesh>
+
+      <mesh ref={haloRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -0.2]}>
+        <torusGeometry args={[2.28, 0.032, 24, 180]} />
+        <meshBasicMaterial
+          color={ORB_COLORS.idle.primary}
+          transparent
+          opacity={0.12}
         />
       </mesh>
 

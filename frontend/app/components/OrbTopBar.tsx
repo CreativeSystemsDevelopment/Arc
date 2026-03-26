@@ -54,12 +54,25 @@ export function OrbTopBar({
   return (
     <motion.header
       initial={{ opacity: 0, y: -18 }}
-      animate={{ opacity: 1, y: 0 }}
+      animate={{
+        opacity: 1,
+        y: [0, -2, 0],
+      }}
       transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
       className="pointer-events-none absolute inset-x-0 top-0 z-20 px-4 pt-4 sm:px-8 sm:pt-6"
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 text-[11px] uppercase tracking-[0.28em] text-white/55 sm:flex-row sm:items-start sm:justify-between">
-        <div className="pointer-events-auto flex items-center gap-4 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 backdrop-blur-xl">
+        <motion.div
+          animate={{
+            boxShadow: [
+              "0 0 0 rgba(96,165,250,0.00)",
+              "0 0 26px rgba(96,165,250,0.10)",
+              "0 0 0 rgba(96,165,250,0.00)",
+            ],
+          }}
+          transition={{ duration: 7.5, repeat: Infinity, ease: "easeInOut" }}
+          className="pointer-events-auto flex items-center gap-4 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 backdrop-blur-xl"
+        >
           <div className="space-y-0.5">
             <p className="font-mono text-[10px] tracking-[0.34em] text-white/45">
               {meta?.identity.subtitle ?? "Agent of Agents"}
@@ -89,7 +102,7 @@ export function OrbTopBar({
               />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
           <StatusChip

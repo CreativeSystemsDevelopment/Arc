@@ -657,8 +657,28 @@ export function AgentChat() {
 
   return (
     <div className="arc-grid arc-abyss relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#25173c_0%,#0b0915_32%,#05070d_62%,#010204_100%)] text-white">
-      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(132,94,194,0.12),transparent_28%,rgba(0,0,0,0.22)_100%)]" />
-      <div className="absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.16),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(96,165,250,0.12),transparent_25%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.04),transparent_30%)]" />
+      <motion.div
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(132,94,194,0.12),transparent_28%,rgba(0,0,0,0.22)_100%)]"
+        animate={
+          reducedMotion
+            ? { opacity: 1 }
+            : { opacity: [0.86, 1, 0.88], scale: [1, 1.018, 1] }
+        }
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.16),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(96,165,250,0.12),transparent_25%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.04),transparent_30%)]"
+        animate={
+          reducedMotion
+            ? { opacity: 0.7 }
+            : {
+                opacity: [0.52, 0.8, 0.6],
+                x: [0, 10, -8, 0],
+                y: [0, -6, 4, 0],
+              }
+        }
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
 
       <OrbTopBar
         meta={uiMeta}
@@ -711,7 +731,15 @@ export function AgentChat() {
                 {visibleMessages.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0, y: reducedMotion ? 0 : 18 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    animate={
+                      reducedMotion
+                        ? { opacity: 1, y: 0 }
+                        : { opacity: 1, y: [0, -4, 0] }
+                    }
+                    transition={{
+                      opacity: { duration: 0.6 },
+                      y: { duration: 10, repeat: Infinity, ease: "easeInOut" },
+                    }}
                     className="pointer-events-auto relative z-10 flex h-full min-h-[18rem] flex-col items-center justify-center text-center"
                   >
                     <p className="font-mono text-xs uppercase tracking-[0.35em] text-white/35">
@@ -720,7 +748,15 @@ export function AgentChat() {
                     <p className="mt-4 max-w-xl font-system-serif text-2xl text-white/75">
                       The abyss remains mostly empty until a command rises.
                     </p>
-                    <div className="mt-8 flex flex-wrap justify-center gap-3">
+                    <motion.div
+                      className="mt-8 flex flex-wrap justify-center gap-3"
+                      animate={
+                        reducedMotion
+                          ? { opacity: 1 }
+                          : { y: [0, -6, 0], opacity: [0.9, 1, 0.92] }
+                      }
+                      transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                    >
                       {[
                         "Research the current Deep Agents runtime.",
                         "Inspect the workspace and summarize the architecture.",
@@ -734,7 +770,7 @@ export function AgentChat() {
                           {suggestion}
                         </button>
                       ))}
-                    </div>
+                    </motion.div>
                   </motion.div>
                 ) : (
                   <DecayStream
@@ -780,7 +816,15 @@ export function AgentChat() {
           </div>
         </div>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-[radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_50%)] opacity-80" />
+        <motion.div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-[radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_50%)] opacity-80"
+          animate={
+            reducedMotion
+              ? { opacity: 0.8 }
+              : { opacity: [0.55, 0.92, 0.6], scaleY: [1, 1.08, 1] }
+          }
+          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+        />
 
         <CommandConduit
           ref={inputRef}

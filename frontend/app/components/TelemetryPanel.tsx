@@ -35,12 +35,30 @@ export function TelemetryPanel({
   return (
     <motion.aside
       initial={{ opacity: 0, y: 28, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
+      animate={{
+        opacity: 1,
+        y: [0, -6, 0],
+        scale: [1, 1.01, 1],
+      }}
       exit={{ opacity: 0, y: 28, scale: 0.98 }}
-      transition={{ duration: 0.5, ease: [0.2, 1, 0.22, 1] }}
+      transition={{
+        opacity: { duration: 0.5, ease: [0.2, 1, 0.22, 1] },
+        y: { duration: 10, repeat: Infinity, ease: "easeInOut" },
+        scale: { duration: 10, repeat: Infinity, ease: "easeInOut" },
+      }}
       className="pointer-events-auto absolute right-4 top-28 z-20 w-[min(24rem,calc(100vw-2rem))]"
     >
-      <div className="rounded-[1.75rem] border border-white/10 bg-black/30 p-4 text-white shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-black/30 p-4 text-white shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+        <motion.div
+          className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/55 to-transparent"
+          animate={{ opacity: [0.2, 0.8, 0.2], scaleX: [0.8, 1, 0.8] }}
+          transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="pointer-events-none absolute -left-8 top-8 h-40 w-40 rounded-full bg-violet-300/10 blur-3xl"
+          animate={{ opacity: [0.18, 0.32, 0.18], x: [0, 10, 0], y: [0, 12, 0] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+        />
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/40">
@@ -108,8 +126,14 @@ export function TelemetryPanel({
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
             <motion.div
               className="h-full rounded-full bg-gradient-to-r from-violet-400/60 via-cyan-300/70 to-white/90"
-              animate={{ width: `${Math.max(contextRatio * 100, 2)}%` }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
+              animate={{
+                width: `${Math.max(contextRatio * 100, 2)}%`,
+                opacity: [0.75, 1, 0.75],
+              }}
+              transition={{
+                width: { duration: 0.5, ease: "easeOut" },
+                opacity: { duration: 3.4, repeat: Infinity, ease: "easeInOut" },
+              }}
             />
           </div>
         </div>
