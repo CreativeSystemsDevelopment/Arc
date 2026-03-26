@@ -58,11 +58,17 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
 
             if msg_type == "ai":
                 content = msg.get("content", "")
+                meta = msg.get("response_metadata") or {}
+                agent_name = None
+                if isinstance(meta, dict):
+                    agent_name = meta.get("lc_agent_name") or meta.get("agent_name")
+
                 if content:
                     events.append(("message", {
                         "content": content,
                         "id": msg.get("id", ""),
                         "node": node_name,
+                        "agent_name": agent_name,
                     }))
 
                 tool_calls = msg.get("tool_calls", [])
@@ -72,6 +78,7 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
                         "name": tc.get("name", ""),
                         "args": tc.get("args", {}),
                         "node": node_name,
+                        "agent_name": agent_name,
                     }))
 
             elif msg_type == "tool":

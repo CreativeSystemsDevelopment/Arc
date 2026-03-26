@@ -23,6 +23,10 @@ def _serialize_message(msg: BaseMessage) -> dict[str, Any]:
         "content": msg.content if isinstance(msg.content, str) else str(msg.content),
         "id": msg.id,
     }
+    if isinstance(msg, AIMessage):
+        meta = getattr(msg, "response_metadata", None) or {}
+        if isinstance(meta, dict) and meta:
+            data["response_metadata"] = meta
     if isinstance(msg, AIMessage) and msg.tool_calls:
         data["tool_calls"] = [
             {
