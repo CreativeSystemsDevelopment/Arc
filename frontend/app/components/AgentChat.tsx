@@ -656,7 +656,7 @@ export function AgentChat() {
   }, [panel]);
 
   return (
-    <div className="arc-grid arc-abyss relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#25173c_0%,#0b0915_32%,#05070d_62%,#010204_100%)] text-white">
+    <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#25173c_0%,#0b0915_32%,#05070d_62%,#010204_100%)] text-white">
       <motion.div
         className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(132,94,194,0.12),transparent_28%,rgba(0,0,0,0.22)_100%)]"
         animate={
@@ -691,9 +691,9 @@ export function AgentChat() {
         onOpenOverlay={(kind) => setOverlay(kind)}
       />
 
-      <div className="relative flex min-h-screen flex-col px-4 pb-10 pt-20 sm:px-6 lg:px-10">
-        <div className="relative flex min-h-[62vh] items-start justify-center">
-          <div className="absolute inset-x-0 top-0 h-[72vh]">
+      <div className="relative flex min-h-screen flex-col px-4 pb-10 pt-12 sm:px-6 lg:px-10">
+        <div className="relative flex min-h-[72vh] items-start justify-center">
+          <div className="absolute inset-x-0 top-0 h-[78vh]">
             <OrbScene
               mode={orbMode}
               identity={uiMeta?.identity ?? null}
@@ -704,7 +704,7 @@ export function AgentChat() {
             />
           </div>
 
-          <div className="relative z-10 flex w-full max-w-7xl flex-col items-center pt-8">
+          <div className="relative z-10 flex w-full max-w-7xl flex-col items-center pt-[22vh] sm:pt-[24vh]">
             <motion.div
               initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -726,7 +726,7 @@ export function AgentChat() {
               </div>
             </motion.div>
 
-            <div className="mt-10 grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="mt-16 grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
               <div className="relative min-h-[20rem]">
                 {visibleMessages.length === 0 ? (
                   <motion.div
