@@ -34,6 +34,8 @@ dependencies = [
     "python-dotenv>=1.0",
     # PostgreSQL checkpointer (production persistence)
     "langgraph-checkpoint-postgres>=2.0",
+    # System monitoring
+    "psutil>=6.0",
     # Type stubs
     "typing-extensions>=4.12",
 ]

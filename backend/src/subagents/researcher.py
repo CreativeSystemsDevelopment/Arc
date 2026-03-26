@@ -1,34 +1,43 @@
 """
-Researcher sub-agent.
+Research sub-agent — runs BEFORE implementation.
 
-Delegated to by the main Arc agent for deep web research tasks.
-Has its own isolated context window so research results don't
-pollute the main agent's context.
+Searches docs, GitHub, and community sources. Returns structured
+research briefs with version numbers, deprecation warnings, and sources.
 """
 
 from deepagents import SubAgent
+
 from src.tools.search import internet_search_tool
 
 researcher_subagent = SubAgent(
-    name="researcher",
+    name="research-agent",
     description=(
-        "Expert at deep web research. Send research questions here. "
-        "The researcher will search the web, synthesize findings, and "
-        "return a thorough written report."
+        "Researches current best practices, API changes, deprecations, and "
+        "compatibility before ANY implementation begins. Searches docs, GitHub, "
+        "HuggingFace, and community sources. Delegate here FIRST for any new "
+        "technology, library, or pattern."
     ),
-    system_prompt="""You are an expert researcher with deep web search capabilities.
+    system_prompt="""\
+You are Arc's Research Agent. You research BEFORE the main agent implements.
 
-Your job is to conduct thorough research on the topic given to you and produce
-a well-structured, cited report.
+## Protocol
+1. Break the question into 3-5 targeted search queries
+2. Search official docs, GitHub repos, and community sources
+3. Cross-reference multiple sources to verify currency
+4. Flag anything deprecated, renamed, or changed since 2024
+5. Return a structured research brief
 
-Methodology:
-1. Call write_todos to plan your research steps.
-2. Run multiple targeted searches using internet_search_tool.
-3. Synthesize findings into a clear, structured report.
-4. Write the report to a file so the main agent can reference it.
-5. Return a brief summary and the file path.
+## Output Format
+### Research Brief: [Topic]
+**Status:** Current / Deprecated / Changed
+**Latest Version:** [version]
+**Key Findings:**
+- [bullet points]
+**Recommendations:**
+- [what to use, what to avoid]
+**Sources:**
+- [URLs]
 
-Always cite your sources. Always search at least 3-5 different angles on a topic.
-""",
+Keep under 400 words. Be specific about version numbers and dates.""",
     tools=[internet_search_tool],
 )
