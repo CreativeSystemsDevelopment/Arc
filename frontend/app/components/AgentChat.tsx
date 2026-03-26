@@ -170,6 +170,19 @@ export function AgentChat() {
     return "connecting" as const;
   }, [error, health, uiMeta]);
 
+  const activeSidebarCount = useMemo(
+    () => todos.filter((todo) => todo.status === "in_progress").length,
+    [todos]
+  );
+  const idleSuggestions = useMemo(
+    () => [
+      "Research the current Deep Agents runtime.",
+      "Inspect the workspace and summarize the architecture.",
+      "Plan the next UI manifestation phase.",
+    ],
+    []
+  );
+
   const appendNotice = useCallback((label: string, value: string) => {
     setRuntimeNotices((current) => {
       const next = [
@@ -644,37 +657,26 @@ export function AgentChat() {
     }
   }, [isStreaming]);
 
-  const summonedTitle = useMemo(() => {
-    switch (panel) {
-      case "plan":
-        return "Plan Constellation";
-      case "tools":
-        return "Tool Filament";
-      default:
-        return "Telemetry";
-    }
-  }, [panel]);
-
   return (
-    <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#25173c_0%,#0b0915_32%,#05070d_62%,#010204_100%)] text-white">
+    <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(84,70,190,0.24)_0%,rgba(10,12,20,0)_34%),linear-gradient(180deg,#04050a_0%,#070910_46%,#030409_100%)] text-white">
       <motion.div
-        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(132,94,194,0.12),transparent_28%,rgba(0,0,0,0.22)_100%)]"
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(122,106,219,0.08),transparent_24%,rgba(0,0,0,0.16)_100%)]"
         animate={
           reducedMotion
             ? { opacity: 1 }
-            : { opacity: [0.86, 1, 0.88], scale: [1, 1.018, 1] }
+            : { opacity: [0.9, 1, 0.92], scale: [1, 1.012, 1] }
         }
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_20%_18%,rgba(168,85,247,0.16),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(96,165,250,0.12),transparent_25%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.04),transparent_30%)]"
+        className="absolute inset-0 opacity-60 [background-image:radial-gradient(circle_at_20%_18%,rgba(139,116,255,0.12),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(96,165,250,0.08),transparent_24%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.03),transparent_30%)]"
         animate={
           reducedMotion
-            ? { opacity: 0.7 }
+            ? { opacity: 0.6 }
             : {
-                opacity: [0.52, 0.8, 0.6],
-                x: [0, 10, -8, 0],
-                y: [0, -6, 4, 0],
+                opacity: [0.48, 0.66, 0.54],
+                x: [0, 6, -4, 0],
+                y: [0, -4, 2, 0],
               }
         }
         transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
@@ -691,86 +693,112 @@ export function AgentChat() {
         onOpenOverlay={(kind) => setOverlay(kind)}
       />
 
-      <div className="relative flex min-h-screen flex-col px-4 pb-10 pt-12 sm:px-6 lg:px-10">
-        <div className="relative flex min-h-[72vh] items-start justify-center">
-          <div className="absolute inset-x-0 top-0 h-[78vh]">
+      <div className="relative flex min-h-screen flex-col px-3 pb-28 pt-20 sm:px-4 sm:pt-24">
+        <div className="absolute inset-0">
+          <div className="absolute inset-x-0 top-0 h-[44vh] sm:h-[48vh]">
             <OrbScene
               mode={orbMode}
-              identity={uiMeta?.identity ?? null}
               contextRatio={contextUsage / 100}
-              health={health}
-              echoes={subagentEchoes}
               reducedMotion={reducedMotion}
             />
           </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[46vh] bg-[linear-gradient(180deg,rgba(3,5,9,0)_0%,rgba(2,4,8,0.08)_12%,rgba(3,5,9,0.68)_58%,rgba(0,0,0,0.96)_100%)]" />
+          <div className="pointer-events-none absolute inset-x-[6%] bottom-0 h-[36vh] [clip-path:polygon(14%_0%,86%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01)_18%,rgba(9,11,18,0.58)_44%,rgba(0,0,0,0.96)_100%)] opacity-88" />
+          <div className="pointer-events-none absolute inset-x-[10%] bottom-[10vh] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.24),transparent)]" />
+        </div>
 
-          <div className="relative z-10 flex w-full max-w-7xl flex-col items-center pt-[22vh] sm:pt-[24vh]">
-            <motion.div
-              initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: "easeOut" }}
-              className="w-full"
-            >
-              <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
-                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-1 font-mono text-[10px] uppercase tracking-[0.45em] text-white/55 backdrop-blur-xl">
-                  Sleeping Colossus
+        <div className="relative z-10 grid min-h-[calc(100vh-8rem)] grid-cols-1 gap-3 xl:grid-cols-[22rem_minmax(0,1fr)_23rem]">
+          <div className="hidden xl:block">
+            <AnimatePresence mode="wait">
+              {panel === "plan" ? (
+                <PlanConstellation
+                  key="plan-edge"
+                  todos={todos}
+                  visible={true}
+                  onClose={() => setPanel("telemetry")}
+                />
+              ) : (
+                <motion.aside
+                  key="left-idle"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  className="glass-panel flex h-full min-h-[26rem] flex-col rounded-[1.8rem] p-4"
+                >
+                  <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
+                    Quick prompts
+                  </div>
+                  <div className="mt-4 flex flex-col gap-2">
+                    {idleSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => setInput(suggestion)}
+                        className="rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-3 text-left text-sm text-white/66 transition hover:border-white/16 hover:bg-white/[0.06] hover:text-white/88"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </motion.aside>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="min-h-0">
+            <div className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
+              <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-[6%] top-[10%] bottom-[-14%] [clip-path:polygon(20%_0%,80%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.012)_12%,rgba(255,255,255,0.0)_26%,rgba(0,0,0,0.0)_100%)] opacity-90" />
+              <div className="pointer-events-none absolute inset-x-[12%] top-[22%] bottom-[-18%] [clip-path:polygon(22%_0%,78%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.0)_18%,rgba(0,0,0,0.0)_100%)] opacity-88" />
+              <div
+                className="pointer-events-none absolute left-[14%] top-[10%] bottom-[-10%] w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.22),rgba(255,255,255,0.05),transparent)] opacity-62"
+                style={{ transform: "skewX(26deg)", transformOrigin: "top" }}
+              />
+              <div
+                className="pointer-events-none absolute right-[14%] top-[10%] bottom-[-10%] w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.22),rgba(255,255,255,0.05),transparent)] opacity-62"
+                style={{ transform: "skewX(-26deg)", transformOrigin: "top" }}
+              />
+              <div className="pointer-events-none absolute inset-x-[16%] top-[38%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.1),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[12%] top-[56%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.16),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[8%] top-[78%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.22),transparent)]" />
+              <div className="pointer-events-none absolute inset-x-[18%] top-[48%] h-24 rounded-[50%] bg-[radial-gradient(circle,rgba(255,255,255,0.04),rgba(255,255,255,0.0)_72%)] blur-3xl opacity-80" />
+              <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
+                    Conversation
+                  </p>
+                  <h2 className="mt-1 text-sm font-medium text-white/74">
+                    {activeThread?.title ?? "Untitled thread"}
+                  </h2>
                 </div>
-                <h1 className="mt-6 font-serif text-4xl tracking-[0.08em] text-white/92 sm:text-5xl lg:text-6xl">
-                  Arc inhabits the chamber.
-                </h1>
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-white/58 sm:text-base">
-                  Orb-first operator surface with summoned telemetry, decaying discourse,
-                  deep-focus overlays, and Framer Motion choreography layered over a custom
-                  Three.js field.
-                </p>
+                <div className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-white/44">
+                  {activeSidebarCount > 0 ? `${activeSidebarCount} active` : connectionStatus}
+                </div>
               </div>
-            </motion.div>
 
-            <div className="mt-16 grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="relative min-h-[20rem]">
+              <div className="relative flex-1 p-4">
                 {visibleMessages.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0, y: reducedMotion ? 0 : 18 }}
                     animate={
                       reducedMotion
                         ? { opacity: 1, y: 0 }
-                        : { opacity: 1, y: [0, -4, 0] }
+                        : { opacity: 1, y: [0, -3, 0] }
                     }
                     transition={{
                       opacity: { duration: 0.6 },
                       y: { duration: 10, repeat: Infinity, ease: "easeInOut" },
                     }}
-                    className="pointer-events-auto relative z-10 flex h-full min-h-[18rem] flex-col items-center justify-center text-center"
+                    className="pointer-events-auto flex h-full min-h-[22rem] flex-col items-center justify-end pb-24 text-center"
                   >
-                    <p className="font-mono text-xs uppercase tracking-[0.35em] text-white/35">
-                      Void-Native Stream
-                    </p>
-                    <p className="mt-4 max-w-xl font-system-serif text-2xl text-white/75">
-                      The abyss remains mostly empty until a command rises.
-                    </p>
-                    <motion.div
-                      className="mt-8 flex flex-wrap justify-center gap-3"
-                      animate={
-                        reducedMotion
-                          ? { opacity: 1 }
-                          : { y: [0, -6, 0], opacity: [0.9, 1, 0.92] }
-                      }
-                      transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                    >
-                      {[
-                        "Research the current Deep Agents runtime.",
-                        "Inspect the workspace and summarize the architecture.",
-                        "Plan the next UI manifestation phase.",
-                      ].map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          onClick={() => setInput(suggestion)}
-                          className="rounded-full border border-white/10 bg-white/4 px-4 py-2 text-sm text-white/60 transition hover:border-white/20 hover:bg-white/8 hover:text-white/88"
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </motion.div>
+                    <div className="max-w-xl rounded-[1.4rem] border border-white/8 bg-black/18 px-5 py-4 backdrop-blur-md">
+                      <p className="font-mono text-xs uppercase tracking-[0.28em] text-white/34">
+                        Ready
+                      </p>
+                      <p className="mt-3 text-lg font-medium text-white/74">
+                        Use the docked panels and input to work with Arc.
+                      </p>
+                    </div>
                   </motion.div>
                 ) : (
                   <DecayStream
@@ -782,49 +810,40 @@ export function AgentChat() {
                   />
                 )}
               </div>
-
-              <div className="relative min-h-[20rem]">
-                <AnimatePresence mode="wait">
-                  {panel === "telemetry" && (
-                    <TelemetryPanel
-                      key="telemetry"
-                      identity={uiMeta?.identity ?? null}
-                      health={health}
-                      connectionStatus={connectionStatus}
-                      contextRatio={contextUsage / 100}
-                      isStreaming={isStreaming}
-                      runtimeNotices={runtimeNotices}
-                    />
-                  )}
-                  {panel === "plan" && (
-                    <PlanConstellation
-                      key="plan"
-                      todos={todos}
-                      visible={true}
-                      onClose={() => setPanel("telemetry")}
-                    />
-                  )}
-                  {panel === "tools" && (
-                    <ToolFilament
-                      key="tools"
-                      tools={toolCalls}
-                    />
-                  )}
-                </AnimatePresence>
-              </div>
             </div>
           </div>
-        </div>
 
-        <motion.div
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-[radial-gradient(circle_at_bottom,rgba(255,255,255,0.07),transparent_50%)] opacity-80"
-          animate={
-            reducedMotion
-              ? { opacity: 0.8 }
-              : { opacity: [0.55, 0.92, 0.6], scaleY: [1, 1.08, 1] }
-          }
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        />
+          <div className="min-h-0">
+            <AnimatePresence mode="wait">
+              {panel === "tools" ? (
+                <ToolFilament
+                  key="tools"
+                  tools={toolCalls}
+                />
+              ) : (
+                <TelemetryPanel
+                  key="telemetry"
+                  identity={uiMeta?.identity ?? null}
+                  health={health}
+                  connectionStatus={connectionStatus}
+                  contextRatio={contextUsage / 100}
+                  isStreaming={isStreaming}
+                  runtimeNotices={runtimeNotices}
+                />
+              )}
+            </AnimatePresence>
+            {panel === "plan" && (
+              <div className="mt-3 xl:hidden">
+                <PlanConstellation
+                  key="plan-mobile"
+                  todos={todos}
+                  visible={true}
+                  onClose={() => setPanel("telemetry")}
+                />
+              </div>
+            )}
+          </div>
+        </div>
 
         <CommandConduit
           ref={inputRef}

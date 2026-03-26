@@ -54,23 +54,25 @@ export function ToolFilament({ tools }: ToolFilamentProps) {
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       exit={{ opacity: 0, y: 18, filter: "blur(12px)" }}
       transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-      className="pointer-events-auto absolute right-5 top-[25vh] z-20 w-[min(26rem,32vw)]"
+      className="pointer-events-auto w-full max-w-sm"
     >
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.16),transparent_40%),rgba(8,12,24,0.68)] p-5 shadow-[0_30px_120px_rgba(2,6,23,0.65)] backdrop-blur-2xl">
+      <div className="relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(8,12,20,0.84),rgba(7,11,18,0.76))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.38)] backdrop-blur-xl">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <p className="text-[0.65rem] uppercase tracking-[0.42em] text-cyan-100/65">
-              Tool filament
+            <p className="text-[0.65rem] uppercase tracking-[0.38em] text-white/36">
+              Tool activity
             </p>
-            <h2 className="font-serif text-2xl text-white">Operational lifecycles</h2>
+            <h2 className="mt-1 text-xl font-semibold tracking-[0.02em] text-white/92">
+              Runtime calls
+            </h2>
           </div>
-          <div className="rounded-full border border-white/10 px-3 py-1 text-[0.7rem] uppercase tracking-[0.24em] text-zinc-300/72">
-            {tools.length} nodes
+          <div className="rounded-full border border-white/10 px-3 py-1 text-[0.68rem] uppercase tracking-[0.22em] text-white/46">
+            {tools.length} calls
           </div>
         </div>
 
         <div className="relative pl-6">
-          <div className="absolute bottom-4 left-[0.62rem] top-4 w-px bg-gradient-to-b from-white/35 via-cyan-200/35 to-white/0" />
+          <div className="absolute bottom-4 left-[0.62rem] top-4 w-px bg-gradient-to-b from-white/28 via-white/18 to-white/0" />
           <div className="space-y-4">
             {tools.map((tool, index) => (
               <motion.article
@@ -78,21 +80,21 @@ export function ToolFilament({ tools }: ToolFilamentProps) {
                 initial={{ opacity: 0, x: 14 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.35, delay: index * 0.05 }}
-                className={`relative rounded-[1.35rem] border px-4 py-3 shadow-[0_20px_60px_rgba(2,6,23,0.28)] ${toolStatusClasses(tool.status)}`}
+                className={`relative rounded-[1.35rem] border px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.18)] ${toolStatusClasses(tool.status)}`}
               >
                 <span className="absolute left-[-1.9rem] top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border border-white/35 bg-[radial-gradient(circle,rgba(255,255,255,0.95),rgba(255,255,255,0.1))]" />
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-mono text-[0.78rem] text-white/90">{tool.name}</p>
-                    <p className="text-[0.62rem] uppercase tracking-[0.28em] text-current/70">
+                    <p className="font-mono text-[0.74rem] text-white/88">{tool.name}</p>
+                    <p className="text-[0.6rem] uppercase tracking-[0.24em] text-current/68">
                       {TOOL_COPY[tool.status]}
                     </p>
                   </div>
-                  <div className="rounded-full border border-current/15 px-2 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-current/75">
+                  <div className="rounded-full border border-current/15 px-2 py-1 text-[0.6rem] uppercase tracking-[0.22em] text-current/74">
                     {tool.node ?? "main"}
                   </div>
                 </div>
-                <p className="mt-3 text-sm leading-relaxed text-white/80">
+                <p className="mt-3 text-sm leading-relaxed text-white/74">
                   {formatPreview(tool)}
                 </p>
               </motion.article>
