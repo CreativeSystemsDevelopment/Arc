@@ -475,17 +475,29 @@ DATABASE_URL=postgresql://...
 │                        Arc Architecture                          │
 ├──────────────────────────┬──────────────────────────────────────┤
 │  Frontend (Next.js 15)   │  Backend (Python / FastAPI)          │
-│                          │                                       │
-│  app/                    │  backend/                             │
-│  ├─ page.tsx             │  ├─ agent.py          ← deep agent   │
+│  18 Custom Components    │                                       │
+│                          │  backend/                             │
+│  app/                    │  ├─ agent.py          ← deep agent   │
+│  ├─ page.tsx             │  ├─ agent_neon.py     ← cloud mode   │
 │  ├─ layout.tsx           │  ├─ tools/            ← custom tools │
-│  └─ components/          │  ├─ subagents/        ← sub-agents   │
-│     ├─ AgentChat.tsx     │  ├─ skills/           ← skill files  │
-│     ├─ ToolCallLog.tsx   │  └─ main.py           ← FastAPI app  │
-│     └─ StatusBar.tsx     │                                       │
-│                          │  deepagents SDK (v0.4.12)            │
-│  deepagents (TS v0.0.1)  │  langgraph (v1.1.3)                  │
-│  framer-motion (v12)     │  langchain (latest)                   │
+│  ├─ globals.css          │  ├─ subagents/        ← sub-agents   │
+│  └─ components/          │  ├─ skills/           ← skill files  │
+│     ├─ AgentChat.tsx     │  └─ main.py           ← FastAPI app  │
+│     ├─ OrbScene.tsx      │                                       │
+│     ├─ CommandConduit.tsx│  deepagents SDK (v0.4.12)            │
+│     ├─ DeepFocusOverlay  │  langgraph (v1.1.3)                  │
+│     ├─ DecayStream.tsx   │  langchain (latest)                   │
+│     ├─ ToolCallCard.tsx  │                                       │
+│     ├─ TelemetryPanel.tsx│  Neon PostgreSQL (cloud)              │
+│     ├─ PlanConstellation │                                       │
+│     └─ ... (10 more)     │                                       │
+│                          │                                       │
+│  Tech Stack:             │                                       │
+│  - React 19 + TypeScript │                                       │
+│  - Framer Motion 12      │                                       │
+│  - Three.js + WebGL      │                                       │
+│  - Custom GLSL shaders   │                                       │
+│  - SSE streaming         │                                       │
 └──────────────────────────┴──────────────────────────────────────┘
                                     │
                           ┌─────────▼──────────┐
@@ -493,6 +505,18 @@ DATABASE_URL=postgresql://...
                           │   (observability)   │
                           └────────────────────┘
 ```
+
+**Frontend Highlights (18 Components):**
+- **AgentChat.tsx** (33KB) - Main interface with thread management, SSE streaming
+- **OrbScene.tsx** - 3D WebGL orb with custom GLSL shaders (Three.js)
+- **CommandConduit.tsx** - Command palette with slash commands (/plan, /files, etc.)
+- **DeepFocusOverlay.tsx** - Focus mode with file/skill/memory browsers
+- **DecayStream.tsx** - Message decay animations with importance scoring
+- **ToolFilament.tsx** - Tool call visual effects
+- **PlanConstellation.tsx** - Todo/plan visualization
+- **TelemetryPanel.tsx** - Real-time VM health metrics
+- **ToolCallCard.tsx** - Tool execution display cards
+- **OrbTopBar.tsx** - Status bar with context meter
 
 **Data flow for a single user request:**
 1. User types a message in the Next.js UI

@@ -6,7 +6,6 @@ import { CommandConduit } from "./CommandConduit";
 import { DecayStream } from "./DecayStream";
 import { DeepFocusOverlay } from "./DeepFocusOverlay";
 import { OrbScene } from "./OrbScene";
-import { OrbTopBar } from "./OrbTopBar";
 import { PlanConstellation } from "./PlanConstellation";
 import { TelemetryPanel } from "./TelemetryPanel";
 import { ToolFilament } from "./ToolFilament";
@@ -97,6 +96,7 @@ export function AgentChat() {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(null);
   const [panel, setPanel] = useState<PanelKind>("telemetry");
+  const [showUiSettings, setShowUiSettings] = useState(false);
   const [runtimeNotices, setRuntimeNotices] = useState<RuntimeNotice[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<AgentStatus>("idle");
@@ -163,6 +163,42 @@ export function AgentChat() {
   const toolCalls = useMemo(() => {
     return messages.flatMap((message) => message.toolCalls).slice(-6);
   }, [messages]);
+
+  // Panel auto-minimize state
+  const [leftMinimized, setLeftMinimized] = useState(false);
+  const [rightMinimized, setRightMinimized] = useState(false);
+  const [leftHovered, setLeftHovered] = useState(false);
+  const [rightHovered, setRightHovered] = useState(false);
+  const [uiSettings, setUiSettings] = useState({
+    autoMinimize: true,
+    autoMinimizeDelay: 3000,
+    reducedMotion: false,
+    audioEnabled: false,
+    orbGlow: 1.0,
+    panelOpacity: 0.8,
+    chatFontSize: "medium" as "small" | "medium" | "large",
+    orbSpeed: 1.0,
+    orbDistortion: 1.0,
+    orbColors: true,
+    showReflections: true,
+    showParticles: true,
+    ambientLight: 0.8,
+  });
+
+  // Auto-minimize side panels when idle (configurable delay after idle state detected)
+  useEffect(() => {
+    if (!uiSettings.autoMinimize) return;
+    if (status === "idle" && !isStreaming && todos.length === 0 && toolCalls.length === 0) {
+      const timer = setTimeout(() => {
+        setLeftMinimized(true);
+        setRightMinimized(true);
+      }, uiSettings.autoMinimizeDelay);
+      return () => clearTimeout(timer);
+    } else {
+      setLeftMinimized(false);
+      setRightMinimized(false);
+    }
+  }, [status, isStreaming, todos.length, toolCalls.length, uiSettings.autoMinimize, uiSettings.autoMinimizeDelay]);
 
   const connectionStatus = useMemo(() => {
     if (error) return "offline" as const;
@@ -682,18 +718,21 @@ export function AgentChat() {
         transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      <OrbTopBar
-        meta={uiMeta}
-        health={health}
-        orbMode={orbMode}
-        contextPercent={contextUsage}
-        activeThread={activeThread}
-        subagentEchos={subagentEchoes}
-        onOpenThreads={() => setOverlay("threads")}
-        onOpenOverlay={(kind) => setOverlay(kind)}
-      />
+      {/* Floating UI Settings Button */}
+      <motion.button
+        onClick={() => setShowUiSettings(true)}
+        className="fixed right-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/60 backdrop-blur-md transition hover:border-white/30 hover:bg-black/60 hover:text-white"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        title="UI Settings"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1V5M12 19V23M4.22 4.22L7.05 7.05M16.95 16.95L19.78 19.78M1 12H5M19 12H23M4.22 19.78L7.05 16.95M16.95 7.05L19.78 4.22" strokeLinecap="round"/>
+        </svg>
+      </motion.button>
 
-      <div className="relative flex min-h-screen flex-col px-3 pb-28 pt-20 sm:px-4 sm:pt-24">
+      <div className="relative flex min-h-screen flex-col px-3 pb-28 pt-12 sm:px-4 sm:pt-16">
         <div className="absolute inset-0">
           <div className="absolute inset-x-0 top-0 h-[44vh] sm:h-[48vh]">
             <OrbScene
@@ -702,31 +741,67 @@ export function AgentChat() {
               reducedMotion={reducedMotion}
             />
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[46vh] bg-[linear-gradient(180deg,rgba(3,5,9,0)_0%,rgba(2,4,8,0.08)_12%,rgba(3,5,9,0.68)_58%,rgba(0,0,0,0.96)_100%)]" />
-          <div className="pointer-events-none absolute inset-x-[6%] bottom-0 h-[36vh] [clip-path:polygon(14%_0%,86%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01)_18%,rgba(9,11,18,0.58)_44%,rgba(0,0,0,0.96)_100%)] opacity-88" />
-          <div className="pointer-events-none absolute inset-x-[10%] bottom-[10vh] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.24),transparent)]" />
         </div>
 
-        <div className="relative z-10 grid min-h-[calc(100vh-8rem)] grid-cols-1 gap-3 xl:grid-cols-[22rem_minmax(0,1fr)_23rem]">
-          <div className="hidden xl:block">
+        <div className="relative z-10 grid min-h-[calc(100vh-8rem)] grid-cols-1 gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
+          {/* Left Panel - Minimizable */}
+          <div
+            className="hidden xl:block"
+            onMouseEnter={() => setLeftHovered(true)}
+            onMouseLeave={() => setLeftHovered(false)}
+          >
             <AnimatePresence mode="wait">
-              {panel === "plan" ? (
+              {panel === "plan" && (!leftMinimized || leftHovered) ? (
                 <PlanConstellation
                   key="plan-edge"
                   todos={todos}
                   visible={true}
                   onClose={() => setPanel("telemetry")}
                 />
+              ) : leftMinimized && !leftHovered ? (
+                /* Minimized Left Indicator */
+                <motion.div
+                  key="left-min"
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "3rem" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="flex h-full flex-col items-center gap-3 py-4"
+                >
+                  <div className="h-12 w-1 rounded-full bg-gradient-to-b from-violet-400/40 to-transparent" />
+                  <div className="flex flex-col gap-2">
+                    {todos.length > 0 && (
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-400/20 text-[10px] text-violet-200">
+                        {todos.filter(t => t.status === "in_progress").length}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-auto flex flex-col gap-2">
+                    <button
+                      onClick={() => setPanel("plan")}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                    >
+                      ≡
+                    </button>
+                  </div>
+                </motion.div>
               ) : (
                 <motion.aside
                   key="left-idle"
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="glass-panel flex h-full min-h-[26rem] flex-col rounded-[1.8rem] p-4"
+                  initial={{ opacity: 0, x: -12, width: "22rem" }}
+                  animate={{ opacity: 1, x: 0, width: "22rem" }}
+                  exit={{ opacity: 0, x: -10, width: 0 }}
+                  className="glass-panel flex h-full min-h-[26rem] w-[22rem] flex-col rounded-[1.8rem] p-4"
                 >
-                  <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
-                    Quick prompts
+                  <div className="flex items-center justify-between">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
+                      Quick prompts
+                    </div>
+                    <button
+                      onClick={() => setLeftMinimized(true)}
+                      className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                    >
+                      ←
+                    </button>
                   </div>
                   <div className="mt-4 flex flex-col gap-2">
                     {idleSuggestions.map((suggestion) => (
@@ -747,21 +822,6 @@ export function AgentChat() {
 
           <div className="min-h-0">
             <div className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
-              <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/18 to-transparent" />
-              <div className="pointer-events-none absolute inset-x-[6%] top-[10%] bottom-[-14%] [clip-path:polygon(20%_0%,80%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.012)_12%,rgba(255,255,255,0.0)_26%,rgba(0,0,0,0.0)_100%)] opacity-90" />
-              <div className="pointer-events-none absolute inset-x-[12%] top-[22%] bottom-[-18%] [clip-path:polygon(22%_0%,78%_0%,100%_100%,0%_100%)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.0)_18%,rgba(0,0,0,0.0)_100%)] opacity-88" />
-              <div
-                className="pointer-events-none absolute left-[14%] top-[10%] bottom-[-10%] w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.22),rgba(255,255,255,0.05),transparent)] opacity-62"
-                style={{ transform: "skewX(26deg)", transformOrigin: "top" }}
-              />
-              <div
-                className="pointer-events-none absolute right-[14%] top-[10%] bottom-[-10%] w-px bg-[linear-gradient(to_bottom,rgba(255,255,255,0.22),rgba(255,255,255,0.05),transparent)] opacity-62"
-                style={{ transform: "skewX(-26deg)", transformOrigin: "top" }}
-              />
-              <div className="pointer-events-none absolute inset-x-[16%] top-[38%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.1),transparent)]" />
-              <div className="pointer-events-none absolute inset-x-[12%] top-[56%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.16),transparent)]" />
-              <div className="pointer-events-none absolute inset-x-[8%] top-[78%] h-px bg-[linear-gradient(to_right,transparent,rgba(210,220,255,0.22),transparent)]" />
-              <div className="pointer-events-none absolute inset-x-[18%] top-[48%] h-24 rounded-[50%] bg-[radial-gradient(circle,rgba(255,255,255,0.04),rgba(255,255,255,0.0)_72%)] blur-3xl opacity-80" />
               <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
                 <div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
@@ -813,23 +873,81 @@ export function AgentChat() {
             </div>
           </div>
 
-          <div className="min-h-0">
+          {/* Right Panel - Minimizable */}
+          <div
+            className="hidden xl:block"
+            onMouseEnter={() => setRightHovered(true)}
+            onMouseLeave={() => setRightHovered(false)}
+          >
             <AnimatePresence mode="wait">
-              {panel === "tools" ? (
-                <ToolFilament
+              {rightMinimized && !rightHovered ? (
+                /* Minimized Right Indicator */
+                <motion.div
+                  key="right-min"
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "3rem" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="flex h-full flex-col items-center gap-3 py-4"
+                >
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => setPanel("telemetry")}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                    >
+                      ○
+                    </button>
+                    <button
+                      onClick={() => setPanel("tools")}
+                      className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] ${panel === "tools" ? "border-cyan-400/40 bg-cyan-400/20 text-cyan-200" : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10"}`}
+                    >
+                      ⚡
+                    </button>
+                  </div>
+                  <div className="mt-auto h-12 w-1 rounded-full bg-gradient-to-t from-cyan-400/40 to-transparent" />
+                </motion.div>
+              ) : panel === "tools" ? (
+                <motion.div
                   key="tools"
-                  tools={toolCalls}
-                />
+                  initial={{ opacity: 0, x: 12, width: 0 }}
+                  animate={{ opacity: 1, x: 0, width: "23rem" }}
+                  exit={{ opacity: 0, x: 10, width: 0 }}
+                  className="w-[23rem]"
+                >
+                  <div className="flex items-center justify-end mb-2">
+                    <button
+                      onClick={() => setRightMinimized(true)}
+                      className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                    >
+                      →
+                    </button>
+                  </div>
+                  <ToolFilament tools={toolCalls} />
+                </motion.div>
               ) : (
-                <TelemetryPanel
+                <motion.div
                   key="telemetry"
-                  identity={uiMeta?.identity ?? null}
-                  health={health}
-                  connectionStatus={connectionStatus}
-                  contextRatio={contextUsage / 100}
-                  isStreaming={isStreaming}
-                  runtimeNotices={runtimeNotices}
-                />
+                  initial={{ opacity: 0, x: 12, width: 0 }}
+                  animate={{ opacity: 1, x: 0, width: "23rem" }}
+                  exit={{ opacity: 0, x: 10, width: 0 }}
+                  className="w-[23rem]"
+                >
+                  <div className="flex items-center justify-end mb-2">
+                    <button
+                      onClick={() => setRightMinimized(true)}
+                      className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                    >
+                      →
+                    </button>
+                  </div>
+                  <TelemetryPanel
+                    identity={uiMeta?.identity ?? null}
+                    health={health}
+                    connectionStatus={connectionStatus}
+                    contextRatio={contextUsage / 100}
+                    isStreaming={isStreaming}
+                    runtimeNotices={runtimeNotices}
+                  />
+                </motion.div>
               )}
             </AnimatePresence>
             {panel === "plan" && (
@@ -885,6 +1003,304 @@ export function AgentChat() {
         memories={uiMeta?.memory_tiers ?? null}
         settings={uiMeta?.settings ?? null}
       />
+
+      {/* UI Settings Overlay */}
+      <AnimatePresence>
+        {showUiSettings && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-md"
+            onClick={() => setShowUiSettings(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="h-[85vh] w-full max-w-2xl overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(12,16,24,0.95)_0%,rgba(8,11,18,0.98)_100%)] shadow-[0_50px_200px_rgba(0,0,0,0.6)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/20">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-violet-300">
+                      <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M19.4 15C19.1277 15.6171 19.2583 16.3378 19.7351 16.8146L19.8146 16.8941C20.1383 17.2178 20.2043 17.7208 19.9765 18.1121C19.7486 18.5034 19.2784 18.7117 18.8134 18.6275C18.3484 18.5433 17.9792 18.1847 17.8694 17.723C17.7597 17.2614 17.9311 16.7781 18.3056 16.4941C18.6801 16.2102 19.1913 16.1646 19.6065 16.3757" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M4.6 15C4.87229 15.6171 4.74169 16.3378 4.26487 16.8146L4.18537 16.8941C3.86167 17.2178 3.7957 17.7208 4.02353 18.1121C4.25136 18.5034 4.72164 18.7117 5.18664 18.6275C5.65164 18.5433 6.02076 18.1847 6.13059 17.723C6.24042 17.2614 6.06894 16.7781 5.69441 16.4941C5.31989 16.2102 4.80871 16.1646 4.39346 16.3757" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M15 4.6C14.3829 4.87229 13.6622 4.74169 13.1854 4.26487L13.1059 4.18537C12.7822 3.86167 12.2792 3.7957 11.8879 4.02353C11.4966 4.25136 11.2883 4.72164 11.3725 5.18664C11.4567 5.65164 11.8153 6.02076 12.277 6.13059C12.7386 6.24042 13.2219 6.06894 13.5059 5.69441C13.7898 5.31989 13.8354 4.80871 13.6243 4.39346" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M9 4.6C9.6171 4.87229 10.3378 4.74169 10.8146 4.26487L10.8941 4.18537C11.2178 3.86167 11.7208 3.7957 12.1121 4.02353C12.5034 4.25136 12.7117 4.72164 12.6275 5.18664C12.5433 5.65164 12.1847 6.02076 11.723 6.13059C11.2614 6.24042 10.7781 6.06894 10.4941 5.69441C10.2102 5.31989 10.1646 4.80871 10.3757 4.39346" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-medium text-white/90">UI Settings</h2>
+                    <p className="text-[11px] text-white/40">Customize your Arc experience</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowUiSettings(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-white/40 hover:bg-white/10 hover:text-white/80"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+
+              {/* Settings Content */}
+              <div className="h-full overflow-y-auto px-6 py-4 pb-24">
+                <div className="space-y-6">
+                  {/* Panels Section */}
+                  <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.02] p-4">
+                    <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-violet-400">
+                        <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                        <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                      </svg>
+                      Panels
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Auto-minimize panels</p>
+                          <p className="text-[11px] text-white/40">Side panels minimize when idle</p>
+                        </div>
+                        <button
+                          onClick={() => setUiSettings(s => ({ ...s, autoMinimize: !s.autoMinimize }))}
+                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.autoMinimize ? 'bg-violet-500' : 'bg-white/20'}`}
+                        >
+                          <motion.div
+                            animate={{ x: uiSettings.autoMinimize ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Minimize delay</p>
+                          <span className="font-mono text-xs text-white/50">{Math.round(uiSettings.autoMinimizeDelay / 1000)}s</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1000"
+                          max="10000"
+                          step="500"
+                          value={uiSettings.autoMinimizeDelay}
+                          onChange={(e) => setUiSettings(s => ({ ...s, autoMinimizeDelay: Number(e.target.value) }))}
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Panel opacity</p>
+                          <span className="font-mono text-xs text-white/50">{Math.round(uiSettings.panelOpacity * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.3"
+                          max="1"
+                          step="0.05"
+                          value={uiSettings.panelOpacity}
+                          onChange={(e) => setUiSettings(s => ({ ...s, panelOpacity: Number(e.target.value) }))}
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Orb Section */}
+                  <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.02] p-4">
+                    <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-cyan-400">
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M12 1V5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M12 19V23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M4.22 4.22L7.05 7.05" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M16.95 16.95L19.78 19.78" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M1 12H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M19 12H23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M4.22 19.78L7.05 16.95" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M16.95 7.05L19.78 4.22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                      Orb Visualization
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Dynamic colors</p>
+                          <p className="text-[11px] text-white/40">Color changes based on agent state</p>
+                        </div>
+                        <button
+                          onClick={() => setUiSettings(s => ({ ...s, orbColors: !s.orbColors }))}
+                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.orbColors ? 'bg-violet-500' : 'bg-white/20'}`}
+                        >
+                          <motion.div
+                            animate={{ x: uiSettings.orbColors ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Show reflections</p>
+                          <p className="text-[11px] text-white/40">Floor reflection effect</p>
+                        </div>
+                        <button
+                          onClick={() => setUiSettings(s => ({ ...s, showReflections: !s.showReflections }))}
+                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.showReflections ? 'bg-violet-500' : 'bg-white/20'}`}
+                        >
+                          <motion.div
+                            animate={{ x: uiSettings.showReflections ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Atmospheric particles</p>
+                          <p className="text-[11px] text-white/40">Floating energy particles</p>
+                        </div>
+                        <button
+                          onClick={() => setUiSettings(s => ({ ...s, showParticles: !s.showParticles }))}
+                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.showParticles ? 'bg-violet-500' : 'bg-white/20'}`}
+                        >
+                          <motion.div
+                            animate={{ x: uiSettings.showParticles ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Animation speed</p>
+                          <span className="font-mono text-xs text-white/50">{uiSettings.orbSpeed.toFixed(1)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="2"
+                          step="0.1"
+                          value={uiSettings.orbSpeed}
+                          onChange={(e) => setUiSettings(s => ({ ...s, orbSpeed: Number(e.target.value) }))}
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Distortion level</p>
+                          <span className="font-mono text-xs text-white/50">{Math.round(uiSettings.orbDistortion * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="3"
+                          step="0.1"
+                          value={uiSettings.orbDistortion}
+                          onChange={(e) => setUiSettings(s => ({ ...s, orbDistortion: Number(e.target.value) }))}
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Glow intensity</p>
+                          <span className="font-mono text-xs text-white/50">{Math.round(uiSettings.orbGlow * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="3"
+                          step="0.1"
+                          value={uiSettings.orbGlow}
+                          onChange={(e) => setUiSettings(s => ({ ...s, orbGlow: Number(e.target.value) }))}
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Ambient light</p>
+                          <span className="font-mono text-xs text-white/50">{Math.round(uiSettings.ambientLight * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="2"
+                          step="0.1"
+                          value={uiSettings.ambientLight}
+                          onChange={(e) => setUiSettings(s => ({ ...s, ambientLight: Number(e.target.value) }))}
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Chat Section */}
+                  <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.02] p-4">
+                    <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-emerald-400">
+                        <path d="M21 11.5C21.0034 12.8199 20.6951 14.1219 20.1 15.3C19.3944 16.7118 18.3098 17.8992 17 18.73C15.6902 19.5608 14.1558 20.0001 12.6 20H12C10.4292 19.9998 8.88433 19.5418 7.57006 18.6776C6.25579 17.8134 5.2304 16.5825 4.6065 15.131C3.9826 13.6794 3.78516 12.0737 4.03726 10.5065C4.28935 8.93937 4.98055 7.47693 6.02621 6.27809C7.07187 5.07926 8.42765 4.19332 9.93858 3.71801C11.4495 3.24269 13.0531 3.19661 14.5889 3.58458" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M22 4L12 14.01L9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Chat
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Font size</p>
+                          <p className="text-[11px] text-white/40">Adjust message text size</p>
+                        </div>
+                        <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                          {(["small", "medium", "large"] as const).map((size) => (
+                            <button
+                              key={size}
+                              onClick={() => setUiSettings(s => ({ ...s, chatFontSize: size }))}
+                              className={`rounded px-3 py-1 text-xs capitalize transition ${uiSettings.chatFontSize === size ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/80'}`}
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Audio feedback</p>
+                          <p className="text-[11px] text-white/40">Sound on new messages</p>
+                        </div>
+                        <button
+                          onClick={() => setUiSettings(s => ({ ...s, audioEnabled: !s.audioEnabled }))}
+                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.audioEnabled ? 'bg-violet-500' : 'bg-white/20'}`}
+                        >
+                          <motion.div
+                            animate={{ x: uiSettings.audioEnabled ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Reduced motion</p>
+                          <p className="text-[11px] text-white/40">Disable animations</p>
+                        </div>
+                        <button
+                          onClick={() => setUiSettings(s => ({ ...s, reducedMotion: !s.reducedMotion }))}
+                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.reducedMotion ? 'bg-violet-500' : 'bg-white/20'}`}
+                        >
+                          <motion.div
+                            animate={{ x: uiSettings.reducedMotion ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {error && (

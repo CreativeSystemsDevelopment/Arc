@@ -32,7 +32,7 @@ dependencies = [
     "httpx>=0.28",
     # Environment variable loading
     "python-dotenv>=1.0",
-    # PostgreSQL checkpointer (production persistence)
+    # PostgreSQL checkpointer and store (production persistence)
     "langgraph-checkpoint-postgres>=2.0",
     # System monitoring
     "psutil>=6.0",
