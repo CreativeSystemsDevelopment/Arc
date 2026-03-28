@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import traceback
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
@@ -26,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.agent import arc_agent
+from src.minimal_agent import current_minimal_model, minimal_agent
 from src.model_factory import current_model_label
 from src.serialization import serialize_chunk
 from src.subagents.coder import coder_subagent
@@ -266,7 +266,9 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
     return events
 
 
-async def stream_agent(message: str, thread_id: str) -> AsyncGenerator[str, None]:
+async def _stream_graph(
+    agent: Any, message: str, thread_id: str
+) -> AsyncGenerator[str, None]:
     """Stream agent updates as structured Server-Sent Events."""
     config = {"configurable": {"thread_id": thread_id}}
     input_data = {"messages": [{"role": "user", "content": message}]}
@@ -274,9 +276,7 @@ async def stream_agent(message: str, thread_id: str) -> AsyncGenerator[str, None
     yield _sse("status", {"status": "planning"})
 
     try:
-        async for chunk in arc_agent.astream(
-            input_data, config=config, stream_mode="updates"
-        ):
+        async for chunk in agent.astream(input_data, config=config, stream_mode="updates"):
             events = _extract_events(chunk)
             if events:
                 yielded_working = False
@@ -300,6 +300,18 @@ async def stream_agent(message: str, thread_id: str) -> AsyncGenerator[str, None
     yield _sse("done", {})
 
 
+async def stream_agent(message: str, thread_id: str) -> AsyncGenerator[str, None]:
+    """Stream the primary Arc agent."""
+    async for event in _stream_graph(arc_agent, message, thread_id):
+        yield event
+
+
+async def stream_minimal_agent(message: str, thread_id: str) -> AsyncGenerator[str, None]:
+    """Stream the standalone minimal Deep Agent."""
+    async for event in _stream_graph(minimal_agent, message, thread_id):
+        yield event
+
+
 @router.post("/invoke/stream")
 async def invoke_stream(req: InvokeRequest):
     """Stream the agent response as Server-Sent Events."""
@@ -311,6 +323,30 @@ async def invoke_stream(req: InvokeRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/debug/minimal/stream")
+async def invoke_minimal_stream(req: InvokeRequest):
+    """Stream a docs-aligned minimal Deep Agent for debugging."""
+    return StreamingResponse(
+        stream_minimal_agent(req.message, req.thread_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/debug/minimal/meta")
+async def minimal_meta():
+    """Return minimal runtime metadata for the standalone debug UI."""
+    return {
+        "agent": "arc-minimal-debug",
+        "model": current_minimal_model(),
+        "transport": "sse",
+        "stream_path": "/debug/minimal/stream",
+    }
 
 
 @router.get("/health")

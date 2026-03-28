@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import openrouter
 from langchain.chat_models import init_chat_model
 from langchain_openrouter import ChatOpenRouter
 
@@ -47,15 +48,22 @@ def build_chat_model() -> Any:
     timeout = int(os.environ.get("AGENT_TIMEOUT", "120"))
 
     if provider == DEFAULT_MODEL_PROVIDER:
+        manual_client = openrouter.OpenRouter(
+            api_key=os.environ.get("OPENROUTER_API_KEY"),
+            http_referer=os.environ.get("OPENROUTER_APP_URL"),
+            x_open_router_title=os.environ.get("OPENROUTER_APP_TITLE"),
+            server_url=os.environ.get("OPENROUTER_API_BASE"),
+            timeout_ms=timeout * 1000,
+        )
         return ChatOpenRouter(
             model_name=model_name,
             openrouter_api_key=os.environ.get("OPENROUTER_API_KEY"),
             openrouter_api_base=os.environ.get("OPENROUTER_API_BASE"),
             app_url=os.environ.get("OPENROUTER_APP_URL"),
-            # The installed `openrouter` SDK expects `x_open_router_title`,
-            # while `langchain_openrouter` currently sends `x_title`.
-            # Explicitly disable the title header so Arc can still boot.
+            # Use a manual OpenRouter client so LangChain avoids its broken
+            # client construction path for async/tool-enabled calls.
             app_title=None,
+            client=manual_client,
             max_retries=max_retries,
             request_timeout=timeout,
         )

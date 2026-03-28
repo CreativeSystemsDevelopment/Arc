@@ -19,6 +19,11 @@ def test_current_model_label_normalizes_bare_model_names():
 
 def test_build_chat_model_ignores_openrouter_app_title(monkeypatch):
     captured: dict[str, object] = {}
+    client_config: dict[str, object] = {}
+
+    class DummyClient:
+        def __init__(self, **kwargs):
+            client_config.update(kwargs)
 
     class DummyOpenRouter:
         def __init__(self, **kwargs):
@@ -28,6 +33,7 @@ def test_build_chat_model_ignores_openrouter_app_title(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("OPENROUTER_APP_TITLE", "Arc: Deep Zero")
     monkeypatch.setenv("OPENROUTER_APP_URL", "https://arc.atlas-platform.cloud")
+    monkeypatch.setattr(model_factory.openrouter, "OpenRouter", DummyClient)
     monkeypatch.setattr(model_factory, "ChatOpenRouter", DummyOpenRouter)
 
     model_factory.build_chat_model()
@@ -35,6 +41,14 @@ def test_build_chat_model_ignores_openrouter_app_title(monkeypatch):
     assert captured["model_name"] == "moonshotai/kimi-k2.5"
     assert captured["app_title"] is None
     assert captured["app_url"] == "https://arc.atlas-platform.cloud"
+    assert isinstance(captured["client"], DummyClient)
+    assert client_config == {
+        "api_key": "test-key",
+        "http_referer": "https://arc.atlas-platform.cloud",
+        "x_open_router_title": "Arc: Deep Zero",
+        "server_url": None,
+        "timeout_ms": 120000,
+    }
 
 
 def test_build_chat_model_uses_explicit_non_openrouter_provider(monkeypatch):

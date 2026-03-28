@@ -1,15 +1,13 @@
 """
 Arc: Deep Zero — the core LangGraph graph.
 
-create_deep_agent() returns a compiled LangGraph StateGraph.
-Uses OpenRouter models, 4 specialized subagents, custom middleware,
-VM health tools, reflection tools, and web search.
+The local FastAPI backend follows the documented Deep Agents pattern:
+- `create_deep_agent()` with a chat model instance
+- default state-backed filesystem for HTTP/server usage
+- `MemorySaver` for thread checkpoints in local development
 """
 
-import os
-
 from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.middleware import ARC_MIDDLEWARE
@@ -27,22 +25,14 @@ from src.tools.vm_health import disk_usage, list_processes, vm_health_check
 def build_agent():
     """Build and return the Arc Deep Zero agent graph."""
 
-    # Configure the primary chat model.
+    # Use a model instance, but otherwise stick to the documented Deep Agents
+    # server pattern: let `create_deep_agent()` manage the default state-backed
+    # backend for local HTTP usage.
     model = build_chat_model()
-
-    # Configure filesystem backend for persistent file operations
-    # Files are stored in the workspace directory
-    backend = FilesystemBackend(
-        root_dir=os.environ.get("WORKSPACE_ROOT", "."),
-        virtual_mode=True,  # Agent sees paths as absolute starting from /
-    )
 
     # Checkpointing for thread persistence and HITL
     checkpointer = MemorySaver()
 
-    # Determine workspace root for path checks
-    workspace_root = os.environ.get("WORKSPACE_ROOT", ".")
-    
     agent = create_deep_agent(
         model=model,
         name="arc-deep-zero",
@@ -62,14 +52,7 @@ def build_agent():
             doc_extraction_subagent,
             uiux_subagent,
         ],
-        backend=backend,
         checkpointer=checkpointer,
-        # Skills directory - loads SKILL.md files on demand
-        # Virtual path /skills/ maps to {workspace_root}/skills/
-        skills=["/skills/"] if os.path.exists(os.path.join(workspace_root, "skills")) else [],
-        # Memory files for persistent context
-        # Virtual path /memories/AGENTS.md maps to {workspace_root}/memories/AGENTS.md
-        memory=["/memories/AGENTS.md"] if os.path.exists(os.path.join(workspace_root, "memories", "AGENTS.md")) else [],
         # Human-in-the-loop for sensitive operations
         interrupt_on={
             "delete_file": True,  # Approve, edit, or reject
