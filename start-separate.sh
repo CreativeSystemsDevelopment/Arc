@@ -12,11 +12,18 @@ echo ""
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
+BACKEND_VENV="$SCRIPT_DIR/backend/.venv"
+BACKEND_PYTHON="$BACKEND_VENV/bin/python"
+
+if [ ! -x "$BACKEND_PYTHON" ]; then
+    echo "Creating backend virtualenv..."
+    python -m venv "$BACKEND_VENV"
+fi
 
 # Install Backend
 echo "Installing Backend Dependencies..."
 cd backend
-pip install -e ".[dev]" -q
+"$BACKEND_PYTHON" -m pip install -e ".[dev]" -q
 cd "$SCRIPT_DIR"
 echo "  Backend ready"
 
@@ -41,8 +48,7 @@ echo "Starting services in separate windows..."
 
 # For Git Bash on Windows, use start command
 cd backend
-export PYTHONPATH="src"
-start "Arc Backend" python -m uvicorn src.main:app --reload --port 8000
+start "Arc Backend" "$BACKEND_PYTHON" -m uvicorn src.main:app --reload --port 8000
 
 cd "$SCRIPT_DIR"
 

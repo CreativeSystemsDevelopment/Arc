@@ -12,11 +12,11 @@ import os
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StoreBackend
-from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.store.postgres import PostgresStore
 
 from src.middleware import ARC_MIDDLEWARE
+from src.model_factory import build_chat_model
 from src.prompt import ARC_SYSTEM_PROMPT
 from src.subagents.coder import coder_subagent
 from src.subagents.doc_extraction import doc_extraction_subagent
@@ -46,11 +46,7 @@ def build_gcp_agent():
     4. For local dev: install cloud-sql-proxy
     """
 
-    model = init_chat_model(
-        os.environ.get("AGENT_MODEL", "openrouter:moonshotai/kimi-k2.5"),
-        max_retries=int(os.environ.get("AGENT_MAX_RETRIES", "10")),
-        timeout=int(os.environ.get("AGENT_TIMEOUT", "120")),
-    )
+    model = build_chat_model()
 
     # Get Cloud SQL connection
     database_url = os.environ.get("GCP_DATABASE_URL")

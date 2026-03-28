@@ -10,10 +10,10 @@ import os
 
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
-from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.middleware import ARC_MIDDLEWARE
+from src.model_factory import build_chat_model
 from src.prompt import ARC_SYSTEM_PROMPT
 from src.subagents.coder import coder_subagent
 from src.subagents.doc_extraction import doc_extraction_subagent
@@ -27,13 +27,8 @@ from src.tools.vm_health import disk_usage, list_processes, vm_health_check
 def build_agent():
     """Build and return the Arc Deep Zero agent graph."""
 
-    # Configure model with OpenRouter and Kimi K2.5
-    # OpenRouter model format: openrouter:provider/model-name
-    model = init_chat_model(
-        os.environ.get("AGENT_MODEL", "openrouter:moonshotai/kimi-k2.5"),
-        max_retries=int(os.environ.get("AGENT_MAX_RETRIES", "10")),
-        timeout=int(os.environ.get("AGENT_TIMEOUT", "120")),
-    )
+    # Configure the primary chat model.
+    model = build_chat_model()
 
     # Configure filesystem backend for persistent file operations
     # Files are stored in the workspace directory

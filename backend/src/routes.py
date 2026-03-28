@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.agent import arc_agent
+from src.model_factory import current_model_label
 from src.serialization import serialize_chunk
 from src.subagents.coder import coder_subagent
 from src.subagents.doc_extraction import doc_extraction_subagent
@@ -320,7 +321,7 @@ async def health():
 @router.get("/ui/meta")
 async def ui_meta():
     """Return static+runtime UI metadata for the Orb shell."""
-    default_model = os.environ.get("AGENT_MODEL", "openrouter:minimax/minimax-m2.7")
+    default_model = current_model_label()
     subagents = [
         researcher_subagent,
         coder_subagent,

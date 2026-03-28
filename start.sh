@@ -37,10 +37,13 @@ echo ""
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
+BACKEND_VENV="$SCRIPT_DIR/backend/.venv"
+BACKEND_PYTHON="$BACKEND_VENV/bin/python"
 
 # Install Backend Dependencies
-if [ ! -d "backend/.venv" ] && [ ! -f "backend/src/agent_neon.py" ]; then
-    echo -e "${YELLOW}Backend dependencies seem to be missing${NC}"
+if [ ! -x "$BACKEND_PYTHON" ]; then
+    echo -e "${YELLOW}Creating backend virtualenv...${NC}"
+    python -m venv "$BACKEND_VENV"
 fi
 
 echo -e "${YELLOW}Installing Backend Dependencies...${NC}"
@@ -48,7 +51,7 @@ echo "  This may take a few minutes..."
 cd backend
 
 # Try to install, but don't fail if already installed
-pip install -e ".[dev]" || {
+"$BACKEND_PYTHON" -m pip install -e ".[dev]" || {
     echo -e "${YELLOW}Warning: Backend install had issues, trying to continue...${NC}"
 }
 
@@ -75,7 +78,7 @@ echo ""
 # Test Neon Connection
 echo -e "${YELLOW}Testing Neon Connection...${NC}"
 cd backend
-python test_neon.py || {
+"$BACKEND_PYTHON" test_neon.py || {
     echo -e "${YELLOW}Neon test failed, will use local fallback mode${NC}"
 }
 cd "$SCRIPT_DIR"
@@ -89,8 +92,7 @@ echo ""
 # Start Backend
 echo -e "${YELLOW}Starting Backend (port 8000)...${NC}"
 cd backend
-export PYTHONPATH="src"
-python -m uvicorn src.main:app --reload --port 8000 &
+"$BACKEND_PYTHON" -m uvicorn src.main:app --reload --port 8000 &
 BACKEND_PID=$!
 echo -e "${GREEN}  Backend started (PID: $BACKEND_PID)${NC}"
 

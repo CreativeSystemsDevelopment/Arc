@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.model_factory import current_model_label
+
 load_dotenv()
 
 # Import agent based on ARC_MODE environment variable
@@ -60,5 +62,5 @@ async def root():
         "status": "ok",
         "agent": "arc",
         "mode": arc_mode,
-        "model": os.environ.get("AGENT_MODEL", "openrouter:moonshotai/kimi-k2.5"),
+        "model": current_model_label(),
     }
