@@ -299,7 +299,8 @@ function OrbCore({
       for (let i = 0; i < particleCount; i++) {
         const i3 = i * 3;
         // Orbit particles around the sphere
-        const speed = reducedMotion ? 0.1 : (mode === "idle" ? 0.2 : 0.5 + uEnergy.value * 0.5);
+        const speed =
+          reducedMotion ? 0.1 : mode === "idle" ? 0.2 : 0.5 + uniforms.uEnergy.value * 0.5;
         const angle = state.clock.elapsedTime * speed * 0.1 + i * 0.1;
         const radius = 2.8 + Math.sin(angle * 2 + i) * 0.2;
         
@@ -343,12 +344,7 @@ function OrbCore({
         {/* Atmosphere particles */}
         <points ref={particleRef}>
           <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              count={particleCount}
-              array={particlePositions}
-              itemSize={3}
-            />
+            <bufferAttribute attach="attributes-position" args={[particlePositions, 3]} />
           </bufferGeometry>
           <pointsMaterial
             size={0.03}
