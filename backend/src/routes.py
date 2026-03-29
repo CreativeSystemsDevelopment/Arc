@@ -77,11 +77,14 @@ TELEMETRY_COVERAGE = {
 class InvokeRequest(BaseModel):
     message: str
     thread_id: str = "default"
+    last_event_id: str | None = None
+    last_seq: int | None = None
 
 
-def _sse(event: str, data: Any) -> str:
+def _sse(event: str, data: Any, *, event_id: str | None = None) -> str:
     """Format a Server-Sent Event payload."""
-    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+    event_id_line = f"id: {event_id}\n" if event_id else ""
+    return f"{event_id_line}event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
 def _event_scope(event_type: str) -> str:
@@ -94,6 +97,25 @@ def _event_scope(event_type: str) -> str:
     if event_type in {"error", "done"}:
         return "backend"
     return "backend"
+
+
+def _signal_class(event_type: str, payload: dict[str, Any]) -> str:
+    if event_type in {"status", "message"}:
+        return "model_lifecycle"
+    if event_type in {"tool_call", "tool_result"}:
+        tool_name = str(payload.get("name", ""))
+        if tool_name == "task":
+            return "subagent_events"
+        if tool_name == "execute":
+            return "command_execution"
+        if tool_name in {"read_memory", "write_memory", "recall_memory"}:
+            return "memory_events"
+        if tool_name == "create_skill":
+            return "skills_events"
+        return "tool_lifecycle"
+    if event_type in {"error", "done", "stream.heartbeat", "stream.resume_ack"}:
+        return "backend_transport"
+    return "backend_transport"
 
 
 def _event_severity(event_type: str, payload: dict[str, Any]) -> str:
@@ -122,6 +144,7 @@ def _runtime_event(
         "scope": _event_scope(event_type),
         "type": event_type,
         "severity": _event_severity(event_type, payload),
+        "signal_class": _signal_class(event_type, payload),
         # Compatibility adapter payload so old/new consumers can coexist.
         "legacy_event": event_type,
         "payload": payload,
@@ -425,7 +448,12 @@ def _extract_events(
 
 
 async def _stream_graph(
-    agent: Any, message: str, thread_id: str
+    agent: Any,
+    message: str,
+    thread_id: str,
+    *,
+    last_event_id: str | None = None,
+    last_seq: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream agent updates as structured Server-Sent Events."""
     config = {"configurable": {"thread_id": thread_id}}
@@ -436,17 +464,56 @@ async def _stream_graph(
 
     planning_payload = {"status": "planning"}
     yield _sse("status", planning_payload)
+    planning_runtime = _runtime_event(
+        event_type="status",
+        payload=planning_payload,
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+    )
     yield _sse(
         "runtime_event",
-        _runtime_event(
-            event_type="status",
-            payload=planning_payload,
+        planning_runtime,
+        event_id=planning_runtime["event_id"],
+    )
+    seq += 1
+
+    if last_event_id is not None or last_seq is not None:
+        resume_payload = {
+            "accepted": True,
+            "last_event_id": last_event_id,
+            "last_seq": last_seq,
+        }
+        resume_runtime = _runtime_event(
+            event_type="stream.resume_ack",
+            payload=resume_payload,
             run_id=run_id,
             thread_id=thread_id,
             seq=seq,
-        ),
+        )
+        yield _sse(
+            "runtime_event",
+            resume_runtime,
+            event_id=resume_runtime["event_id"],
+        )
+        seq += 1
+
+    heartbeat_payload = {"kind": "stream.heartbeat"}
+    yield _sse("heartbeat", heartbeat_payload)
+    heartbeat_runtime = _runtime_event(
+        event_type="stream.heartbeat",
+        payload=heartbeat_payload,
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+    )
+    yield _sse(
+        "runtime_event",
+        heartbeat_runtime,
+        event_id=heartbeat_runtime["event_id"],
     )
     seq += 1
+    last_heartbeat_ts = time()
     ai_last_content_by_id: dict[str, str] = {}
     seeded_initial_state = False
     tool_error_counts: dict[str, int] = {}
@@ -474,28 +541,32 @@ async def _stream_graph(
                     if not yielded_working:
                         working_payload = {"status": "working"}
                         yield _sse("status", working_payload)
+                        working_runtime = _runtime_event(
+                            event_type="status",
+                            payload=working_payload,
+                            run_id=run_id,
+                            thread_id=thread_id,
+                            seq=seq,
+                        )
                         yield _sse(
                             "runtime_event",
-                            _runtime_event(
-                                event_type="status",
-                                payload=working_payload,
-                                run_id=run_id,
-                                thread_id=thread_id,
-                                seq=seq,
-                            ),
+                            working_runtime,
+                            event_id=working_runtime["event_id"],
                         )
                         seq += 1
                         yielded_working = True
                     yield _sse(event_type, event_data)
+                    event_runtime = _runtime_event(
+                        event_type=event_type,
+                        payload=event_data,
+                        run_id=run_id,
+                        thread_id=thread_id,
+                        seq=seq,
+                    )
                     yield _sse(
                         "runtime_event",
-                        _runtime_event(
-                            event_type=event_type,
-                            payload=event_data,
-                            run_id=run_id,
-                            thread_id=thread_id,
-                            seq=seq,
-                        ),
+                        event_runtime,
+                        event_id=event_runtime["event_id"],
                     )
                     seq += 1
                     if event_type == "tool_result":
@@ -547,6 +618,24 @@ async def _stream_graph(
                                     ),
                                 )
                                 return
+            now = time()
+            if now - last_heartbeat_ts >= 8:
+                periodic_heartbeat_payload = {"kind": "stream.heartbeat"}
+                yield _sse("heartbeat", periodic_heartbeat_payload)
+                periodic_heartbeat_runtime = _runtime_event(
+                    event_type="stream.heartbeat",
+                    payload=periodic_heartbeat_payload,
+                    run_id=run_id,
+                    thread_id=thread_id,
+                    seq=seq,
+                )
+                yield _sse(
+                    "runtime_event",
+                    periodic_heartbeat_runtime,
+                    event_id=periodic_heartbeat_runtime["event_id"],
+                )
+                seq += 1
+                last_heartbeat_ts = now
             await asyncio.sleep(0)
 
         done_status_payload = {"status": "done"}

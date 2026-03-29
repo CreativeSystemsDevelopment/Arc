@@ -33,6 +33,7 @@ const DEFAULT_CONTEXT_WINDOW = 200_000;
 const EMPTY_MESSAGES: ArcMessage[] = [];
 const EMPTY_TODOS: TodoItem[] = [];
 const MAX_RUNTIME_EVENTS = 400;
+const MAX_TIMELINE_EVENTS = 14;
 
 function createThreadRecord(threadId?: string): ThreadRecord {
   const now = Date.now();
@@ -127,6 +128,23 @@ function parseRuntimeEvent(
   };
 }
 
+function signalClassFromRuntimeEvent(event: RuntimeEventEnvelope): string {
+  if (event.type === "status" || event.type === "message") {
+    return "model_lifecycle";
+  }
+  if (event.type === "tool_call" || event.type === "tool_result") {
+    return "tool_lifecycle";
+  }
+  if (
+    event.type === "error" ||
+    event.type === "done" ||
+    event.scope === "backend"
+  ) {
+    return "backend_transport";
+  }
+  return "unknown";
+}
+
 export function AgentChat() {
   const prefersReducedMotion = useReducedMotion();
   const backendBaseUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -150,12 +168,15 @@ export function AgentChat() {
   const [showUiSettings, setShowUiSettings] = useState(false);
   const [runtimeNotices, setRuntimeNotices] = useState<RuntimeNotice[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEventEnvelope[]>([]);
+  const [runtimeGapCount, setRuntimeGapCount] = useState(0);
+  const [coverageMissingCount, setCoverageMissingCount] = useState(0);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [subagentEchoes, setSubagentEchoes] = useState<SubagentEcho[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastSeqByRunRef = useRef<Map<string, number>>(new Map());
   const reducedMotion = Boolean(prefersReducedMotion) || manualReducedMotion;
 
   useEffect(() => {
@@ -215,6 +236,35 @@ export function AgentChat() {
   const toolCalls = useMemo(() => {
     return messages.flatMap((message) => message.toolCalls).slice(-6);
   }, [messages]);
+
+  const requiredSignalClasses = useMemo(() => {
+    const rawCoverage = uiMeta?.telemetry?.coverage ?? {};
+    return Object.keys(rawCoverage);
+  }, [uiMeta]);
+
+  const observedSignalClasses = useMemo(() => {
+    const classes = new Set<string>();
+    for (const runtimeEvent of runtimeEvents) {
+      classes.add(signalClassFromRuntimeEvent(runtimeEvent));
+    }
+    return classes;
+  }, [runtimeEvents]);
+
+  const observedSignalClassList = useMemo(
+    () => Array.from(observedSignalClasses).sort(),
+    [observedSignalClasses]
+  );
+
+  const missingSignalClasses = useMemo(() => {
+    if (requiredSignalClasses.length === 0) return [];
+    return requiredSignalClasses.filter(
+      (signalClass) => !observedSignalClasses.has(signalClass)
+    );
+  }, [observedSignalClasses, requiredSignalClasses]);
+
+  const frameworkTimeline = useMemo(() => {
+    return runtimeEvents.slice(0, MAX_TIMELINE_EVENTS);
+  }, [runtimeEvents]);
 
   // Panel auto-minimize state
   const [leftMinimized, setLeftMinimized] = useState(false);
@@ -497,6 +547,17 @@ export function AgentChat() {
       if (event === "runtime_event") {
         const envelope = parseRuntimeEvent(data);
         if (!envelope) return;
+
+        const previousSeq = lastSeqByRunRef.current.get(envelope.run_id);
+        if (typeof previousSeq === "number" && envelope.seq !== previousSeq + 1) {
+          setRuntimeGapCount((count) => count + 1);
+          appendNotice(
+            "Stream Gap",
+            `Run ${envelope.run_id.slice(0, 8)} sequence jump ${previousSeq} -> ${envelope.seq}`
+          );
+        }
+        lastSeqByRunRef.current.set(envelope.run_id, envelope.seq);
+
         appendRuntimeEvent(envelope);
 
         if (envelope.type === "error") {
@@ -685,6 +746,10 @@ export function AgentChat() {
     },
     [appendNotice, appendRuntimeEvent, updateAssistantMessage, updateThread]
   );
+
+  useEffect(() => {
+    setCoverageMissingCount(missingSignalClasses.length);
+  }, [missingSignalClasses]);
 
   const handleSubmit = useCallback(
     async (value: string) => {
@@ -1064,6 +1129,12 @@ export function AgentChat() {
                     isStreaming={isStreaming}
                     runtimeNotices={runtimeNotices}
                     runtimeEventCount={runtimeEvents.length}
+                    runtimeGapCount={runtimeGapCount}
+                    coverageMissingCount={coverageMissingCount}
+                    frameworkTimeline={frameworkTimeline}
+                    requiredSignalClasses={requiredSignalClasses}
+                    observedSignalClasses={observedSignalClassList}
+                    missingSignalClasses={missingSignalClasses}
                   />
                 </motion.div>
               )}

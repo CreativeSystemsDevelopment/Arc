@@ -145,25 +145,17 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
                   <ArcMarkdown content={message.content} />
                 </div>
 
-                {/* Tool calls - minimal styling */}
+                {/* Tool calls summary - compact to save stream real estate */}
                 {message.toolCalls.length > 0 && (
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    {message.toolCalls.map((tool) => (
-                      <div
-                        key={tool.id}
-                        className="px-1 py-1"
-                      >
-                        <div className="mb-1 flex items-center justify-between text-[9px] uppercase tracking-[0.18em] text-white/25">
-                          <span>{tool.name}</span>
-                          <span>{tool.status}</span>
-                        </div>
-                        <p className="line-clamp-2 text-xs leading-5 text-white/40">
-                          {tool.result ||
-                            JSON.stringify(tool.args).slice(0, 100) ||
-                            "Awaiting output"}
-                        </p>
-                      </div>
-                    ))}
+                  <div className="mt-3 flex items-center gap-2 px-1">
+                    <div className="h-[6px] w-[6px] rounded-full bg-cyan-300/70 shadow-[0_0_10px_rgba(103,232,249,0.45)]" />
+                    <p
+                      className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40"
+                      title={message.toolCalls.map((tool) => tool.name).join(", ")}
+                    >
+                      Executed {message.toolCalls.length} tool
+                      {message.toolCalls.length === 1 ? "" : "s"}...
+                    </p>
                   </div>
                 )}
               </motion.div>

@@ -2,7 +2,12 @@
 
 import { motion } from "framer-motion";
 
-import type { HealthPayload, RuntimeNotice, UiIdentity } from "./types";
+import type {
+  HealthPayload,
+  RuntimeEventEnvelope,
+  RuntimeNotice,
+  UiIdentity,
+} from "./types";
 
 interface TelemetryPanelProps {
   identity: UiIdentity | null;
@@ -12,6 +17,12 @@ interface TelemetryPanelProps {
   isStreaming: boolean;
   runtimeNotices: RuntimeNotice[];
   runtimeEventCount?: number;
+  runtimeGapCount?: number;
+  coverageMissingCount?: number;
+  frameworkTimeline?: RuntimeEventEnvelope[];
+  requiredSignalClasses?: string[];
+  observedSignalClasses?: string[];
+  missingSignalClasses?: string[];
 }
 
 function metricTone(value: number, warning: number, danger: number) {
@@ -28,6 +39,12 @@ export function TelemetryPanel({
   isStreaming,
   runtimeNotices,
   runtimeEventCount = 0,
+  runtimeGapCount = 0,
+  coverageMissingCount = 0,
+  frameworkTimeline = [],
+  requiredSignalClasses = [],
+  observedSignalClasses = [],
+  missingSignalClasses = [],
 }: TelemetryPanelProps) {
   const snapshot = health?.snapshot;
   const cpu = snapshot?.cpu_percent ?? 0;
@@ -88,6 +105,12 @@ export function TelemetryPanel({
           </div>
           <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
             Events <span className="ml-2 text-cyan-200">{runtimeEventCount}</span>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
+            Gaps <span className={`ml-2 ${runtimeGapCount > 0 ? "text-amber-200" : "text-emerald-200"}`}>{runtimeGapCount}</span>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
+            Coverage <span className={`ml-2 ${coverageMissingCount > 0 ? "text-amber-200" : "text-emerald-200"}`}>{coverageMissingCount === 0 ? "ok" : `-${coverageMissingCount}`}</span>
           </div>
         </div>
 
@@ -167,6 +190,63 @@ export function TelemetryPanel({
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : null}
+
+        {frameworkTimeline.length > 0 ? (
+          <div className="mt-5 rounded-[1.5rem] border border-white/8 bg-black/18 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/35">
+              Framework timeline
+            </div>
+            <div className="mt-3 space-y-2">
+              {frameworkTimeline.slice(0, 6).map((eventItem) => (
+                <div
+                  key={eventItem.event_id}
+                  className="rounded-[1rem] border border-white/6 bg-white/[0.03] px-3 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/42">
+                      {eventItem.type}
+                    </span>
+                    <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${eventItem.severity === "error" ? "text-rose-200" : "text-cyan-200"}`}>
+                      {eventItem.scope}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-white/58">
+                    #{eventItem.seq} · run {eventItem.run_id.slice(0, 8)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {requiredSignalClasses.length > 0 ? (
+          <div className="mt-5 rounded-[1.5rem] border border-white/8 bg-black/18 p-4">
+            <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.24em] text-white/35">
+              <span>Coverage matrix</span>
+              <span className={missingSignalClasses.length > 0 ? "text-amber-200" : "text-emerald-200"}>
+                {requiredSignalClasses.length - missingSignalClasses.length}/{requiredSignalClasses.length}
+              </span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {requiredSignalClasses.map((signalClass) => {
+                const covered = observedSignalClasses.includes(signalClass);
+                return (
+                  <div
+                    key={signalClass}
+                    className="flex items-center justify-between rounded-[1rem] border border-white/6 bg-white/[0.03] px-3 py-2"
+                  >
+                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/45">
+                      {signalClass.replaceAll("_", " ")}
+                    </span>
+                    <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${covered ? "text-emerald-200" : "text-amber-200"}`}>
+                      {covered ? "covered" : "pending"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : null}
