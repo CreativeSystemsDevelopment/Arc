@@ -8,7 +8,12 @@ Or for LangGraph Studio development:
     langgraph dev --allow-blocking
 
 Environment:
-    ARC_MODE=local|neon|gcp|r2 (default: local)
+    Single unified runtime (admin-first).
+    Optional persistence env vars:
+      - ARC_DATABASE_URL
+      - NEON_DATABASE_URL
+      - DATABASE_URL
+      - GCP_DATABASE_URL
 """
 
 import os
@@ -21,21 +26,16 @@ from src.model_factory import current_model_label
 
 load_dotenv()
 
-# Import agent based on ARC_MODE environment variable
-arc_mode = os.environ.get("ARC_MODE", "local").lower()
-
-if arc_mode == "neon":
-    print("[Arc] Loading Neon cloud agent configuration...")
-    from src.agent_neon import arc_agent  # noqa: F401
-elif arc_mode == "gcp":
-    print("[Arc] Loading Google Cloud agent configuration...")
-    from src.agent_gcp import arc_agent  # noqa: F401
-elif arc_mode == "cloud":
-    print("[Arc] Loading generic cloud agent configuration...")
-    from src.agent_cloud import arc_agent  # noqa: F401
+requested_mode = (os.environ.get("ARC_MODE") or "").strip().lower()
+if requested_mode and requested_mode not in {"unified", "admin", "local"}:
+    print(
+        f"[Arc] ARC_MODE='{requested_mode}' is deprecated; "
+        "loading unified admin runtime instead."
+    )
 else:
-    print("[Arc] Loading local agent configuration...")
-    from src.agent import arc_agent  # noqa: F401
+    print("[Arc] Loading unified admin runtime...")
+
+from src.agent import arc_agent  # noqa: F401
 
 from src.routes import router  # noqa: E402
 
@@ -62,6 +62,7 @@ async def root():
     return {
         "status": "ok",
         "agent": "arc",
-        "mode": arc_mode,
+        "mode": "unified-admin",
+        "requested_mode": requested_mode or None,
         "model": current_model_label(),
     }

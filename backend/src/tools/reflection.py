@@ -59,7 +59,8 @@ def create_skill(
         triggers: List of trigger phrases
         instructions: Full markdown instructions for the skill
     """
-    skill_dir = os.path.join("/tmp", "skills", skill_name)
+    skills_root = os.environ.get("ARC_SKILLS_ROOT", "/home/eshan/arc/Arc/skills")
+    skill_dir = os.path.join(skills_root, skill_name)
     os.makedirs(skill_dir, exist_ok=True)
 
     trigger_str = ", ".join(triggers)

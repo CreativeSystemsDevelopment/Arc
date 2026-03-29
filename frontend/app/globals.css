@@ -268,6 +268,15 @@ select {
   font-weight: 700;
 }
 
+.arc-hidden-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.arc-hidden-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .arc-inline-image {
   display: block;
   width: 100%;

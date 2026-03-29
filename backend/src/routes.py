@@ -55,7 +55,6 @@ MAX_TREE_ITEMS = 18
 # side-effecting retry loops. Read-only discovery tools should not terminate
 # the whole stream after repeated errors.
 FAIL_FAST_TOOLS = {
-    "execute",
     "internet_search_tool",
     "task",
     "write_file",

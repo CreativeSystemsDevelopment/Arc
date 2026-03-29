@@ -165,6 +165,103 @@ const FRAGMENT_SHADER = `
   }
 `;
 
+function NeuralLace({
+  mode,
+  energy,
+  glowColor,
+  reducedMotion,
+}: {
+  mode: OrbMode;
+  energy: number;
+  glowColor: THREE.Color;
+  reducedMotion: boolean;
+}) {
+  const laceRef = useRef<THREE.LineSegments>(null);
+
+  const { geometry, edgeCount } = useMemo(() => {
+    const ico = new THREE.IcosahedronGeometry(3.7, 1);
+    const edges = new THREE.EdgesGeometry(ico);
+    const count = edges.attributes.position.count / 2;
+    return { geometry: edges, edgeCount: count };
+  }, []);
+
+  const edgeOpacities = useMemo(
+    () => new Float32Array(edgeCount * 2).fill(0.08),
+    [edgeCount]
+  );
+
+  useFrame((state) => {
+    if (!laceRef.current) return;
+    const t = state.clock.elapsedTime;
+    const motionScale = reducedMotion ? 0.25 : 1;
+
+    for (let i = 0; i < edgeCount; i++) {
+      const phase = Math.sin(t * (0.6 + energy * 1.4) * motionScale + i * 1.7);
+      const wave =
+        mode === "thinking"
+          ? Math.max(0, phase) * 0.7
+          : mode === "answering"
+            ? 0.4 + phase * 0.35
+            : mode === "error"
+              ? Math.abs(Math.sin(t * 3 + i * 0.9)) * 0.5
+              : phase * 0.15 + 0.08;
+
+      const opacity = Math.min(0.85, wave * energy);
+      edgeOpacities[i * 2] = opacity;
+      edgeOpacities[i * 2 + 1] = opacity;
+    }
+
+    const attr = laceRef.current.geometry.getAttribute("opacity");
+    if (attr) {
+      (attr.array as Float32Array).set(edgeOpacities);
+      attr.needsUpdate = true;
+    }
+
+    laceRef.current.rotation.y = t * 0.02 * motionScale;
+    laceRef.current.rotation.x = Math.sin(t * 0.08) * 0.015;
+  });
+
+  const shaderMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+          uColor: { value: glowColor },
+        },
+        vertexShader: `
+          attribute float opacity;
+          varying float vOpacity;
+          void main() {
+            vOpacity = opacity;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uColor;
+          varying float vOpacity;
+          void main() {
+            gl_FragColor = vec4(uColor, vOpacity);
+          }
+        `,
+      }),
+    [glowColor]
+  );
+
+  return (
+    <lineSegments ref={laceRef} frustumCulled={false}>
+      <primitive object={geometry} attach="geometry">
+        <bufferAttribute
+          attach="attributes-opacity"
+          args={[edgeOpacities, 1]}
+        />
+      </primitive>
+      <primitive object={shaderMat} attach="material" />
+    </lineSegments>
+  );
+}
+
 function OrbCore({
   mode,
   contextRatio,
@@ -329,6 +426,14 @@ function OrbCore({
             fragmentShader={FRAGMENT_SHADER}
           />
         </mesh>
+
+        {/* Neural lace wireframe overlay */}
+        <NeuralLace
+          mode={mode}
+          energy={uniforms.uEnergy.value}
+          glowColor={uniforms.uGlow.value}
+          reducedMotion={reducedMotion}
+        />
 
         {/* Inner core glow */}
         <mesh>

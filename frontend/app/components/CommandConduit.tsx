@@ -42,8 +42,8 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
       : [];
 
     return (
-      <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-30 px-4 pb-4 sm:px-6">
-        <div className="mx-auto flex max-w-4xl flex-col gap-3">
+      <div className="pointer-events-auto w-full">
+        <div className="flex w-full flex-col gap-3">
           <div className="flex items-center justify-between px-2 text-[10px] uppercase tracking-[0.3em] text-white/40">
             <span>Input conduit</span>
             <div className="flex items-center gap-2">

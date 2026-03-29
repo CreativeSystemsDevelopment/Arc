@@ -181,6 +181,7 @@ export function AgentChat() {
   const [error, setError] = useState<string | null>(null);
   const [subagentEchoes, setSubagentEchoes] = useState<SubagentEcho[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const lastSeqByRunRef = useRef<Map<string, number>>(new Map());
   const reducedMotion = Boolean(prefersReducedMotion) || manualReducedMotion;
 
@@ -887,6 +888,10 @@ export function AgentChat() {
     }
   }, [isStreaming]);
 
+  useEffect(() => {
+    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [visibleMessages]);
+
   return (
     <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(84,70,190,0.24)_0%,rgba(10,12,20,0)_34%),linear-gradient(180deg,#04050a_0%,#070910_46%,#030409_100%)] text-white">
       <motion.div
@@ -941,11 +946,11 @@ export function AgentChat() {
           <div className="relative flex h-full flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
             {/* Left dock - inside main panel edge, below header */}
             <div
-              className="absolute bottom-0 left-0 top-[3.5rem] z-20 hidden xl:block"
+              className="absolute left-0 top-[3.75rem] z-20 hidden xl:block"
               onMouseEnter={() => setLeftHovered(true)}
               onMouseLeave={() => setLeftHovered(false)}
             >
-              <div className="h-full w-[22rem] px-2 py-2">
+              <div className="w-[22rem] px-2 pt-2">
                 <AnimatePresence mode="wait">
                   {panel === "plan" && (!leftMinimized || leftHovered) ? (
                     <PlanConstellation
@@ -960,7 +965,7 @@ export function AgentChat() {
                       initial={{ opacity: 0, width: 0 }}
                       animate={{ opacity: 1, width: "3rem" }}
                       exit={{ opacity: 0, width: 0 }}
-                      className="flex h-full flex-col items-center gap-3 py-4"
+                      className="flex flex-col items-center gap-3 py-4"
                     >
                       <div className="h-12 w-1 rounded-full bg-gradient-to-b from-violet-400/40 to-transparent" />
                       <div className="flex flex-col gap-2">
@@ -970,7 +975,7 @@ export function AgentChat() {
                           </div>
                         )}
                       </div>
-                      <div className="mt-auto flex flex-col gap-2">
+                      <div className="mt-4 flex flex-col gap-2">
                         <button
                           onClick={() => setPanel("plan")}
                           className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
@@ -982,10 +987,10 @@ export function AgentChat() {
                   ) : (
                     <motion.aside
                       key="left-idle"
-                      initial={{ opacity: 0, x: -12, width: "22rem" }}
-                      animate={{ opacity: 1, x: 0, width: "22rem" }}
-                      exit={{ opacity: 0, x: -10, width: 0 }}
-                      className="glass-panel flex h-full min-h-[26rem] w-[22rem] flex-col rounded-[1.8rem] p-4"
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      className="w-[22rem] p-4"
                     >
                       <div className="flex items-center justify-between">
                         <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
@@ -1018,11 +1023,11 @@ export function AgentChat() {
 
             {/* Right dock - inside main panel edge, below header */}
             <div
-              className="absolute bottom-0 right-0 top-[3.5rem] z-20 hidden xl:block"
+              className="absolute right-0 top-[3.75rem] z-20 hidden xl:block"
               onMouseEnter={() => setRightHovered(true)}
               onMouseLeave={() => setRightHovered(false)}
             >
-              <div className="h-full w-[23rem] px-2 py-2">
+              <div className="w-[23rem] px-2 pt-2">
                 <AnimatePresence mode="wait">
                   {rightMinimized && !rightHovered ? (
                     <motion.div
@@ -1105,23 +1110,25 @@ export function AgentChat() {
               </div>
             </div>
 
+            {/* Panel header — full width, above all docks */}
+            <div className="relative z-30 flex shrink-0 items-center justify-between border-b border-white/8 px-4 py-3">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
+                  Conversation
+                </p>
+                <h2 className="mt-1 text-sm font-medium text-white/74">
+                  {activeThread?.title ?? "Untitled thread"}
+                </h2>
+              </div>
+              <div className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-white/44">
+                {activeSidebarCount > 0 ? `${activeSidebarCount} active` : connectionStatus}
+              </div>
+            </div>
+
             {/* Main conduit content area */}
             <div className="relative flex min-h-0 flex-1 flex-col xl:pl-[22rem] xl:pr-[23rem]">
-              <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-                <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
-                    Conversation
-                  </p>
-                  <h2 className="mt-1 text-sm font-medium text-white/74">
-                    {activeThread?.title ?? "Untitled thread"}
-                  </h2>
-                </div>
-                <div className="rounded-full border border-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-white/44">
-                  {activeSidebarCount > 0 ? `${activeSidebarCount} active` : connectionStatus}
-                </div>
-              </div>
 
-              <div className="relative flex-1 overflow-x-hidden overflow-y-auto scroll-pb-72 px-6 pb-72">
+              <div className="arc-hidden-scrollbar relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-6 pb-4" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
                 {visibleMessages.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0, y: reducedMotion ? 0 : 18 }}
@@ -1154,6 +1161,7 @@ export function AgentChat() {
                     }}
                   />
                 )}
+                <div ref={scrollAnchorRef} className="h-1" />
               </div>
 
               {panel === "plan" && (
@@ -1166,30 +1174,33 @@ export function AgentChat() {
                   />
                 </div>
               )}
+
+              {/* Input conduit docked to bottom of main panel */}
+              <div className="shrink-0 border-t border-white/8 px-4 py-3">
+                <CommandConduit
+                  ref={inputRef}
+                  input={input}
+                  isStreaming={isStreaming}
+                  reducedMotion={reducedMotion}
+                  audioEnabled={audioEnabled}
+                  toggleReducedMotion={() =>
+                    setManualReducedMotion((current) => !current)
+                  }
+                  toggleAudio={() => setAudioEnabled((current) => !current)}
+                  commands={uiMeta?.slash_commands ?? []}
+                  setInput={setInput}
+                  onExecuteCommand={(command) => {
+                    void handleSlashCommand(command);
+                  }}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleSubmit(input);
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>
-
-        <CommandConduit
-          ref={inputRef}
-          input={input}
-          isStreaming={isStreaming}
-          reducedMotion={reducedMotion}
-          audioEnabled={audioEnabled}
-          toggleReducedMotion={() =>
-            setManualReducedMotion((current) => !current)
-          }
-          toggleAudio={() => setAudioEnabled((current) => !current)}
-          commands={uiMeta?.slash_commands ?? []}
-          setInput={setInput}
-          onExecuteCommand={(command) => {
-            void handleSlashCommand(command);
-          }}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSubmit(input);
-          }}
-        />
       </div>
 
       <DeepFocusOverlay
