@@ -78,6 +78,11 @@ class InvokeRequest(BaseModel):
     last_seq: int | None = None
 
 
+class AttachRunRequest(BaseModel):
+    last_event_id: str | None = None
+    last_seq: int | None = None
+
+
 def _sse(event: str, data: Any, *, event_id: str | None = None) -> str:
     """Format a Server-Sent Event payload."""
     event_id_line = f"id: {event_id}\n" if event_id else ""
@@ -787,6 +792,64 @@ async def invoke_minimal_stream(req: InvokeRequest):
     """Stream a docs-aligned minimal Deep Agent for debugging."""
     return StreamingResponse(
         stream_minimal_agent(req.message, req.thread_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/runs/{run_id}")
+async def run_status(run_id: str):
+    """Return supervisor/metadata state for a persisted run."""
+    queue, run_meta = await run_supervisor.attach(run_id)
+    # immediately unsubscribe; status endpoint should not stay attached.
+    # attach() always returns a queue.
+    await run_supervisor.unsubscribe(run_id, queue)
+    if run_meta is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {
+        "run": run_meta,
+        "supervisor": run_supervisor.status(),
+    }
+
+
+@router.post("/runs/{run_id}/stream")
+async def attach_run_stream(run_id: str, req: AttachRunRequest):
+    """Attach to an existing run stream with optional replay cursor."""
+
+    async def stream_existing() -> AsyncGenerator[str, None]:
+        queue, run_meta = await run_supervisor.attach(
+            run_id,
+            last_event_id=req.last_event_id,
+            last_seq=req.last_seq,
+        )
+        if run_meta is None:
+            yield _sse("error", {"error": "Run not found"})
+            yield _sse("done", {})
+            await run_supervisor.unsubscribe(run_id, queue)
+            return
+        try:
+            yield _sse(
+                "run",
+                {
+                    "run_id": run_id,
+                    "thread_id": run_meta.get("thread_id"),
+                    "status": run_meta.get("status"),
+                    "attach": True,
+                },
+            )
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            await run_supervisor.unsubscribe(run_id, queue)
+
+    return StreamingResponse(
+        stream_existing(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
