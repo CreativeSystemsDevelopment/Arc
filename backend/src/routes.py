@@ -26,14 +26,11 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.agent import arc_agent
+from src.agent import get_arc_agent, get_runtime_status
 from src.minimal_agent import current_minimal_model, minimal_agent
 from src.model_factory import current_model_label
 from src.serialization import serialize_chunk
-from src.subagents.coder import coder_subagent
-from src.subagents.doc_extraction import doc_extraction_subagent
-from src.subagents.researcher import researcher_subagent
-from src.subagents.uiux import uiux_subagent
+from src.subagent_registry import registered_subagents
 from src.tools.vm_health import vm_health_check
 
 router = APIRouter()
@@ -109,7 +106,7 @@ def _signal_class(event_type: str, payload: dict[str, Any]) -> str:
             return "command_execution"
         if tool_name in {"read_memory", "write_memory", "recall_memory"}:
             return "memory_events"
-        if tool_name == "create_skill":
+        if tool_name in {"create_skill", "create_subagent", "request_subagent_reload"}:
             return "skills_events"
         return "tool_lifecycle"
     if event_type in {"error", "done", "stream.heartbeat", "stream.resume_ack"}:
@@ -702,6 +699,7 @@ async def stream_agent(
     last_seq: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream the primary Arc agent."""
+    arc_agent = get_arc_agent()
     async for event in _stream_graph(
         arc_agent,
         message,
@@ -769,12 +767,7 @@ async def health():
 async def ui_meta():
     """Return static+runtime UI metadata for the Orb shell."""
     default_model = current_model_label()
-    subagents = [
-        researcher_subagent,
-        coder_subagent,
-        doc_extraction_subagent,
-        uiux_subagent,
-    ]
+    subagents = registered_subagents()
 
     return {
         "identity": {
@@ -941,6 +934,7 @@ async def ui_meta():
             },
             "coverage": TELEMETRY_COVERAGE,
         },
+        "runtime": get_runtime_status(),
     }
 
 
