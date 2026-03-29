@@ -35,6 +35,9 @@ def _serialize_message(msg: BaseMessage) -> dict[str, Any]:
     if isinstance(msg, ToolMessage):
         data["tool_call_id"] = msg.tool_call_id
         data["name"] = msg.name
+        tool_status = getattr(msg, "status", None)
+        if tool_status is not None:
+            data["status"] = str(tool_status)
     return data
 
 

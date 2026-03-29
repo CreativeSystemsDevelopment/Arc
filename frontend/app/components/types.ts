@@ -19,6 +19,7 @@ export interface ToolCall {
   args: Record<string, unknown>;
   result?: string;
   status: ToolStatus;
+  error?: boolean;
   node?: string;
   createdAt: number;
 }
@@ -117,12 +118,33 @@ export interface UiMeta {
   memory_tiers: UiMemoryTier[];
   slash_commands: UiSlashCommand[];
   settings: UiSettingSection[];
+  telemetry?: {
+    version: number;
+    event_envelope: {
+      required_fields: string[];
+      sse_event_name: string;
+    };
+    coverage: Record<string, string[]>;
+  };
 }
 
 export interface RuntimeNotice {
   id: string;
   label: string;
   value: string;
+}
+
+export interface RuntimeEventEnvelope {
+  event_id: string;
+  seq: number;
+  ts: number;
+  run_id: string;
+  thread_id: string;
+  scope: string;
+  type: string;
+  severity: "info" | "error";
+  legacy_event: string;
+  payload: Record<string, unknown>;
 }
 
 export interface HealthSnapshot {

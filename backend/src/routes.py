@@ -18,7 +18,9 @@ import json
 import traceback
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
+from time import time
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -49,6 +51,27 @@ IGNORED_PATH_PARTS = {
 }
 MAX_FILE_PREVIEW_BYTES = 32_000
 MAX_TREE_ITEMS = 18
+# Only fail-fast hard-stop for higher-risk tools that can cause expensive or
+# side-effecting retry loops. Read-only discovery tools should not terminate
+# the whole stream after repeated errors.
+FAIL_FAST_TOOLS = {
+    "execute",
+    "internet_search_tool",
+    "task",
+    "write_file",
+    "edit_file",
+    "delete_file",
+}
+TELEMETRY_COVERAGE = {
+    "model_lifecycle": ["timeline", "indicator"],
+    "tool_lifecycle": ["timeline", "indicator"],
+    "command_execution": ["timeline", "indicator"],
+    "memory_events": ["timeline", "indicator"],
+    "skills_events": ["timeline", "indicator"],
+    "subagent_events": ["timeline", "indicator"],
+    "backend_transport": ["timeline", "indicator"],
+    "infra_telemetry": ["indicator"],
+}
 
 
 class InvokeRequest(BaseModel):
@@ -59,6 +82,50 @@ class InvokeRequest(BaseModel):
 def _sse(event: str, data: Any) -> str:
     """Format a Server-Sent Event payload."""
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
+def _event_scope(event_type: str) -> str:
+    if event_type in {"message", "status"}:
+        return "model"
+    if event_type in {"tool_call", "tool_result"}:
+        return "tool"
+    if event_type == "todos":
+        return "planner"
+    if event_type in {"error", "done"}:
+        return "backend"
+    return "backend"
+
+
+def _event_severity(event_type: str, payload: dict[str, Any]) -> str:
+    if event_type == "error":
+        return "error"
+    if event_type == "tool_result":
+        if bool(payload.get("error")) or str(payload.get("status", "")).lower() == "error":
+            return "error"
+    return "info"
+
+
+def _runtime_event(
+    *,
+    event_type: str,
+    payload: dict[str, Any],
+    run_id: str,
+    thread_id: str,
+    seq: int,
+) -> dict[str, Any]:
+    return {
+        "event_id": str(uuid4()),
+        "seq": seq,
+        "ts": int(time() * 1000),
+        "run_id": run_id,
+        "thread_id": thread_id,
+        "scope": _event_scope(event_type),
+        "type": event_type,
+        "severity": _event_severity(event_type, payload),
+        # Compatibility adapter payload so old/new consumers can coexist.
+        "legacy_event": event_type,
+        "payload": payload,
+    }
 
 
 def _label_for_subagent(subagent: Any) -> str:
@@ -176,7 +243,16 @@ def _health_level(snapshot: dict[str, Any]) -> str:
     return "healthy"
 
 
-def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
+def _extract_events(
+    chunk: dict[str, Any],
+    *,
+    ai_last_content_by_id: dict[str, str] | None = None,
+    seed_only: bool = False,
+    emitted_tool_call_ids: set[str] | None = None,
+    emitted_tool_result_ids: set[str] | None = None,
+    emitted_tool_call_signatures: set[str] | None = None,
+    emitted_tool_result_signatures: set[str] | None = None,
+) -> list[tuple[str, Any]]:
     """Extract structured events from a LangGraph stream update chunk."""
     events: list[tuple[str, Any]] = []
     serialized = serialize_chunk(chunk)
@@ -196,13 +272,45 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
             msg_type = msg.get("type", "")
 
             if msg_type == "ai":
+                lowered_node = str(node_name).lower()
+                # Ignore middleware/pre-post agent nodes to prevent replaying
+                # stale/system AI messages in the live chat stream.
+                if (
+                    "middleware" in lowered_node
+                    or lowered_node.endswith(".before_agent")
+                    or lowered_node.endswith(".after_agent")
+                    or lowered_node.endswith("before_agent")
+                    or lowered_node.endswith("after_agent")
+                ):
+                    continue
+
                 content = msg.get("content", "")
-                if content:
+                message_id = str(msg.get("id", "") or "")
+
+                if ai_last_content_by_id is not None and message_id:
+                    previous_content = ai_last_content_by_id.get(message_id)
+                    ai_last_content_by_id[message_id] = content
+
+                    if seed_only:
+                        continue
+
+                    if previous_content is None:
+                        delta = content
+                    elif content == previous_content:
+                        continue
+                    elif isinstance(content, str) and isinstance(previous_content, str) and content.startswith(previous_content):
+                        delta = content[len(previous_content) :]
+                    else:
+                        delta = content
+                else:
+                    delta = content
+
+                if delta:
                     events.append(
                         (
                             "message",
                             {
-                                "content": content,
+                                "content": delta,
                                 "id": msg.get("id", ""),
                                 "node": node_name,
                             },
@@ -211,11 +319,31 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
 
                 tool_calls = msg.get("tool_calls", [])
                 for tool_call in tool_calls:
+                    tool_call_id = str(tool_call.get("id", "") or "")
+                    if tool_call_id and emitted_tool_call_ids is not None:
+                        if tool_call_id in emitted_tool_call_ids:
+                            continue
+                        emitted_tool_call_ids.add(tool_call_id)
+                    elif emitted_tool_call_signatures is not None:
+                        # Fallback dedupe when upstream omits tool_call IDs.
+                        signature = json.dumps(
+                            {
+                                "node": node_name,
+                                "name": tool_call.get("name", ""),
+                                "args": tool_call.get("args", {}),
+                            },
+                            sort_keys=True,
+                            default=str,
+                        )
+                        if signature in emitted_tool_call_signatures:
+                            continue
+                        emitted_tool_call_signatures.add(signature)
+
                     events.append(
                         (
                             "tool_call",
                             {
-                                "id": tool_call.get("id", ""),
+                                "id": tool_call_id,
                                 "name": tool_call.get("name", ""),
                                 "args": tool_call.get("args", {}),
                                 "node": node_name,
@@ -226,6 +354,16 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
             elif msg_type == "tool":
                 content = msg.get("content", "")
                 name = msg.get("name", "")
+                status = str(msg.get("status", ""))
+                preview_text = (
+                    content[:2000] if isinstance(content, str) else str(content)[:2000]
+                )
+                inferred_error = (
+                    "error invoking tool" in preview_text.lower()
+                    or "traceback" in preview_text.lower()
+                    or "exception" in preview_text.lower()
+                )
+                normalized_status = "error" if status == "error" or inferred_error else "completed"
 
                 if name == "write_todos":
                     try:
@@ -244,16 +382,36 @@ def _extract_events(chunk: dict[str, Any]) -> list[tuple[str, Any]]:
                         )
                     )
                 else:
-                    preview = (
-                        content[:2000] if isinstance(content, str) else str(content)[:2000]
-                    )
+                    tool_message_id = str(msg.get("id", "") or "")
+                    if tool_message_id and emitted_tool_result_ids is not None:
+                        if tool_message_id in emitted_tool_result_ids:
+                            continue
+                        emitted_tool_result_ids.add(tool_message_id)
+                    elif emitted_tool_result_signatures is not None:
+                        signature = json.dumps(
+                            {
+                                "node": node_name,
+                                "tool_call_id": msg.get("tool_call_id", ""),
+                                "name": name,
+                                "status": normalized_status,
+                                "content": preview_text,
+                            },
+                            sort_keys=True,
+                            default=str,
+                        )
+                        if signature in emitted_tool_result_signatures:
+                            continue
+                        emitted_tool_result_signatures.add(signature)
+
                     events.append(
                         (
                             "tool_result",
                             {
                                 "tool_call_id": msg.get("tool_call_id", ""),
                                 "name": name,
-                                "content": preview,
+                                "content": preview_text,
+                                "status": normalized_status,
+                                "error": inferred_error,
                                 "node": node_name,
                             },
                         )
@@ -273,31 +431,169 @@ async def _stream_graph(
     config = {"configurable": {"thread_id": thread_id}}
     input_data = {"messages": [{"role": "user", "content": message}]}
 
-    yield _sse("status", {"status": "planning"})
+    run_id = str(uuid4())
+    seq = 0
+
+    planning_payload = {"status": "planning"}
+    yield _sse("status", planning_payload)
+    yield _sse(
+        "runtime_event",
+        _runtime_event(
+            event_type="status",
+            payload=planning_payload,
+            run_id=run_id,
+            thread_id=thread_id,
+            seq=seq,
+        ),
+    )
+    seq += 1
+    ai_last_content_by_id: dict[str, str] = {}
+    seeded_initial_state = False
+    tool_error_counts: dict[str, int] = {}
+    emitted_tool_call_ids: set[str] = set()
+    emitted_tool_result_ids: set[str] = set()
+    emitted_tool_call_signatures: set[str] = set()
+    emitted_tool_result_signatures: set[str] = set()
 
     try:
         async for chunk in agent.astream(input_data, config=config, stream_mode="updates"):
-            events = _extract_events(chunk)
+            events = _extract_events(
+                chunk,
+                ai_last_content_by_id=ai_last_content_by_id,
+                seed_only=not seeded_initial_state,
+                emitted_tool_call_ids=emitted_tool_call_ids,
+                emitted_tool_result_ids=emitted_tool_result_ids,
+                emitted_tool_call_signatures=emitted_tool_call_signatures,
+                emitted_tool_result_signatures=emitted_tool_result_signatures,
+            )
+            if not seeded_initial_state:
+                seeded_initial_state = True
             if events:
                 yielded_working = False
                 for event_type, event_data in events:
                     if not yielded_working:
-                        yield _sse("status", {"status": "working"})
+                        working_payload = {"status": "working"}
+                        yield _sse("status", working_payload)
+                        yield _sse(
+                            "runtime_event",
+                            _runtime_event(
+                                event_type="status",
+                                payload=working_payload,
+                                run_id=run_id,
+                                thread_id=thread_id,
+                                seq=seq,
+                            ),
+                        )
+                        seq += 1
                         yielded_working = True
                     yield _sse(event_type, event_data)
+                    yield _sse(
+                        "runtime_event",
+                        _runtime_event(
+                            event_type=event_type,
+                            payload=event_data,
+                            run_id=run_id,
+                            thread_id=thread_id,
+                            seq=seq,
+                        ),
+                    )
+                    seq += 1
+                    if event_type == "tool_result":
+                        tool_name = str(event_data.get("name", "tool"))
+                        is_error = bool(event_data.get("error")) or str(
+                            event_data.get("status", "")
+                        ).lower() == "error"
+                        if is_error:
+                            tool_error_counts[tool_name] = tool_error_counts.get(tool_name, 0) + 1
+                            if (
+                                tool_name in FAIL_FAST_TOOLS
+                                and tool_error_counts[tool_name] >= 2
+                            ):
+                                yield _sse(
+                                    "error",
+                                    {
+                                        "error": (
+                                            f"Repeated failure in tool '{tool_name}'. "
+                                            "Failing fast to prevent retry loops."
+                                        )
+                                    },
+                                )
+                                fail_fast_payload = {
+                                    "error": (
+                                        f"Repeated failure in tool '{tool_name}'. "
+                                        "Failing fast to prevent retry loops."
+                                    )
+                                }
+                                yield _sse(
+                                    "runtime_event",
+                                    _runtime_event(
+                                        event_type="error",
+                                        payload=fail_fast_payload,
+                                        run_id=run_id,
+                                        thread_id=thread_id,
+                                        seq=seq,
+                                    ),
+                                )
+                                seq += 1
+                                yield _sse("done", {})
+                                yield _sse(
+                                    "runtime_event",
+                                    _runtime_event(
+                                        event_type="done",
+                                        payload={},
+                                        run_id=run_id,
+                                        thread_id=thread_id,
+                                        seq=seq,
+                                    ),
+                                )
+                                return
             await asyncio.sleep(0)
 
-        yield _sse("status", {"status": "done"})
+        done_status_payload = {"status": "done"}
+        yield _sse("status", done_status_payload)
+        yield _sse(
+            "runtime_event",
+            _runtime_event(
+                event_type="status",
+                payload=done_status_payload,
+                run_id=run_id,
+                thread_id=thread_id,
+                seq=seq,
+            ),
+        )
+        seq += 1
     except Exception as exc:  # pragma: no cover - defensive streaming path
+        error_payload = {
+            "error": str(exc),
+            "traceback": traceback.format_exc()[-500:],
+        }
         yield _sse(
             "error",
-            {
-                "error": str(exc),
-                "traceback": traceback.format_exc()[-500:],
-            },
+            error_payload,
         )
+        yield _sse(
+            "runtime_event",
+            _runtime_event(
+                event_type="error",
+                payload=error_payload,
+                run_id=run_id,
+                thread_id=thread_id,
+                seq=seq,
+            ),
+        )
+        seq += 1
 
     yield _sse("done", {})
+    yield _sse(
+        "runtime_event",
+        _runtime_event(
+            event_type="done",
+            payload={},
+            run_id=run_id,
+            thread_id=thread_id,
+            seq=seq,
+        ),
+    )
 
 
 async def stream_agent(message: str, thread_id: str) -> AsyncGenerator[str, None]:
@@ -510,6 +806,25 @@ async def ui_meta():
                 ],
             },
         ],
+        "telemetry": {
+            "version": 1,
+            "event_envelope": {
+                "required_fields": [
+                    "event_id",
+                    "seq",
+                    "ts",
+                    "run_id",
+                    "thread_id",
+                    "scope",
+                    "type",
+                    "severity",
+                    "legacy_event",
+                    "payload",
+                ],
+                "sse_event_name": "runtime_event",
+            },
+            "coverage": TELEMETRY_COVERAGE,
+        },
     }
 
 

@@ -43,28 +43,7 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
 
     return (
       <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-30 px-4 pb-4 sm:px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={
-            reducedMotion
-              ? { opacity: 1, y: 0 }
-              : {
-                  opacity: 1,
-                  y: [0, -4, 0],
-                }
-          }
-          transition={
-            reducedMotion
-              ? { duration: 0.2, ease: "easeOut" }
-              : {
-                  duration: 9,
-                  repeat: Infinity,
-                  repeatType: "mirror",
-                  ease: "easeInOut",
-                }
-          }
-          className="mx-auto flex max-w-4xl flex-col gap-3"
-        >
+        <div className="mx-auto flex max-w-4xl flex-col gap-3">
           <div className="flex items-center justify-between px-2 text-[10px] uppercase tracking-[0.3em] text-white/40">
             <span>Input conduit</span>
             <div className="flex items-center gap-2">
@@ -85,44 +64,14 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
             </div>
           </div>
 
-          <motion.form
+          <form
             onSubmit={onSubmit}
-            initial={{ opacity: 0.8, scale: 0.99 }}
-            animate={
-              reducedMotion
-                ? { opacity: 1, scale: 1 }
-                : {
-                    opacity: 1,
-                    scale: [1, 1.006, 1],
-                  }
-            }
-            transition={
-              reducedMotion
-                ? { duration: 0.15 }
-                : {
-                    duration: 6.5,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }
-            }
-            className="relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.92),rgba(7,10,17,0.96))] px-5 py-4 shadow-[0_-12px_50px_rgba(0,0,0,0.22)] backdrop-blur-2xl"
+            className="relative overflow-hidden rounded-[1.8rem] border border-white/12 bg-[linear-gradient(180deg,rgba(10,14,22,0.46),rgba(7,10,17,0.58))] px-5 py-4 shadow-[0_-12px_50px_rgba(0,0,0,0.18)] backdrop-blur-2xl"
           >
             <div className="pointer-events-none absolute inset-x-[8%] top-0 h-px bg-gradient-to-r from-transparent via-white/28 to-transparent" />
-            <motion.div
+            <div
               className="pointer-events-none absolute inset-x-[18%] -bottom-10 h-14 rounded-full bg-[radial-gradient(circle,rgba(132,150,255,0.14),transparent_70%)] blur-2xl"
-              animate={
-                reducedMotion
-                  ? { opacity: 0.4 }
-                  : {
-                      opacity: [0.16, 0.28, 0.16],
-                      scaleX: [0.94, 1.04, 0.94],
-                    }
-              }
-              transition={{
-                duration: reducedMotion ? 0.2 : 5.8,
-                repeat: reducedMotion ? 0 : Infinity,
-                ease: "easeInOut",
-              }}
+              style={{ opacity: reducedMotion ? 0.34 : 0.24 }}
             />
 
             <label htmlFor="arc-command-conduit" className="sr-only">
@@ -176,7 +125,7 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                 {isStreaming ? "Working" : "Send"}
               </motion.button>
             </div>
-          </motion.form>
+          </form>
 
           <AnimatePresence>
             {showPalette && filteredCommands.length > 0 && (
@@ -213,7 +162,7 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
       </div>
     );
   }

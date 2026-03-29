@@ -11,6 +11,7 @@ interface TelemetryPanelProps {
   contextRatio: number;
   isStreaming: boolean;
   runtimeNotices: RuntimeNotice[];
+  runtimeEventCount?: number;
 }
 
 function metricTone(value: number, warning: number, danger: number) {
@@ -26,6 +27,7 @@ export function TelemetryPanel({
   contextRatio,
   isStreaming,
   runtimeNotices,
+  runtimeEventCount = 0,
 }: TelemetryPanelProps) {
   const snapshot = health?.snapshot;
   const cpu = snapshot?.cpu_percent ?? 0;
@@ -83,6 +85,9 @@ export function TelemetryPanel({
           </div>
           <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
             Link <span className={`ml-2 ${connectionTone}`}>{connectionStatus}</span>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
+            Events <span className="ml-2 text-cyan-200">{runtimeEventCount}</span>
           </div>
         </div>
 

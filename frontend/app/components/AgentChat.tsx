@@ -18,6 +18,7 @@ import type {
   OverlayKind,
   PanelKind,
   RuntimeNotice,
+  RuntimeEventEnvelope,
   SubagentEcho,
   ThreadRecord,
   TodoItem,
@@ -27,10 +28,11 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "arc-orb-threads";
-const MAX_VISIBLE_MESSAGES = 12;
+const MAX_VISIBLE_MESSAGES = 3;
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 const EMPTY_MESSAGES: ArcMessage[] = [];
 const EMPTY_TODOS: TodoItem[] = [];
+const MAX_RUNTIME_EVENTS = 400;
 
 function createThreadRecord(threadId?: string): ThreadRecord {
   const now = Date.now();
@@ -80,10 +82,59 @@ function loadThreads(): ThreadRecord[] {
   }
 }
 
+function parseRuntimeEvent(
+  input: Record<string, unknown>
+): RuntimeEventEnvelope | null {
+  const eventId = input.event_id;
+  const seq = input.seq;
+  const ts = input.ts;
+  const runId = input.run_id;
+  const threadId = input.thread_id;
+  const scope = input.scope;
+  const type = input.type;
+  const severity = input.severity;
+  const legacyEvent = input.legacy_event;
+  const payload = input.payload;
+
+  if (
+    typeof eventId !== "string" ||
+    typeof seq !== "number" ||
+    typeof ts !== "number" ||
+    typeof runId !== "string" ||
+    typeof threadId !== "string" ||
+    typeof scope !== "string" ||
+    typeof type !== "string" ||
+    (severity !== "info" && severity !== "error") ||
+    typeof legacyEvent !== "string" ||
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
+    return null;
+  }
+
+  return {
+    event_id: eventId,
+    seq,
+    ts,
+    run_id: runId,
+    thread_id: threadId,
+    scope,
+    type,
+    severity,
+    legacy_event: legacyEvent,
+    payload: payload as Record<string, unknown>,
+  };
+}
+
 export function AgentChat() {
   const prefersReducedMotion = useReducedMotion();
-  const backendBaseUrl =
-    process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+  const backendBaseUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (!backendBaseUrl) {
+    throw new Error(
+      "NEXT_PUBLIC_BACKEND_URL is required. No fallback backend URL is allowed."
+    );
+  }
   const [manualReducedMotion, setManualReducedMotion] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
 
@@ -98,6 +149,7 @@ export function AgentChat() {
   const [panel, setPanel] = useState<PanelKind>("telemetry");
   const [showUiSettings, setShowUiSettings] = useState(false);
   const [runtimeNotices, setRuntimeNotices] = useState<RuntimeNotice[]>([]);
+  const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEventEnvelope[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -227,6 +279,12 @@ export function AgentChat() {
       ].slice(0, 6);
       return next;
     });
+  }, []);
+
+  const appendRuntimeEvent = useCallback((runtimeEvent: RuntimeEventEnvelope) => {
+    setRuntimeEvents((current) =>
+      [runtimeEvent, ...current].slice(0, MAX_RUNTIME_EVENTS)
+    );
   }, []);
 
   const updateThread = useCallback(
@@ -436,6 +494,25 @@ export function AgentChat() {
       event: string,
       data: Record<string, unknown>
     ) => {
+      if (event === "runtime_event") {
+        const envelope = parseRuntimeEvent(data);
+        if (!envelope) return;
+        appendRuntimeEvent(envelope);
+
+        if (envelope.type === "error") {
+          appendNotice("Runtime Error", String(envelope.payload.error ?? "Unknown"));
+          return;
+        }
+
+        if (envelope.type === "status") {
+          const nextStatus = String(envelope.payload.status ?? "");
+          if (nextStatus === "planning" || nextStatus === "working" || nextStatus === "done") {
+            appendNotice("Runtime", nextStatus);
+          }
+        }
+        return;
+      }
+
       if (event === "status") {
         const nextStatus = data.status as AgentStatus;
         if (nextStatus) {
@@ -452,11 +529,15 @@ export function AgentChat() {
 
       if (event === "message") {
         const fragment = String(data.content ?? "");
+        const sourceNode = String(data.node ?? "");
         if (!fragment) return;
+        // Fail-fast: only render primary model output in chat.
+        // Ignore middleware/pre-post agent chatter entirely.
+        if (sourceNode !== "model") return;
         updateAssistantMessage(threadId, assistantId, (message) => ({
           ...message,
           content: `${message.content}${fragment}`,
-          node: String(data.node ?? message.node ?? ""),
+          node: sourceNode,
           importance: deriveImportance(`${message.content}${fragment}`, "assistant"),
           decayAt: decayForMessage(`${message.content}${fragment}`, "assistant"),
         }));
@@ -506,21 +587,57 @@ export function AgentChat() {
       if (event === "tool_result") {
         const toolCallId = String(data.tool_call_id ?? "");
         const content = String(data.content ?? "");
+        const toolStatus =
+          String(data.status ?? "").toLowerCase() === "error" || Boolean(data.error)
+            ? "error"
+            : "completed";
+        let repeatedFailure = false;
+        let failedToolName = "";
         updateAssistantMessage(threadId, assistantId, (message) => ({
           ...message,
-          toolCalls: message.toolCalls.map((toolCall) =>
-            toolCall.id === toolCallId
-              ? { ...toolCall, result: content, status: "completed" }
-              : toolCall
-          ),
+          toolCalls: message.toolCalls.map((toolCall) => {
+            if (toolCall.id !== toolCallId) return toolCall;
+
+            failedToolName = toolCall.name;
+            if (toolStatus === "error") {
+              const previousFailures = message.toolCalls.filter(
+                (existing) =>
+                  existing.id !== toolCallId &&
+                  existing.name === toolCall.name &&
+                  existing.status === "error"
+              ).length;
+              repeatedFailure = previousFailures >= 1;
+            }
+
+            return {
+              ...toolCall,
+              result: content,
+              status: toolStatus,
+              error: toolStatus === "error",
+            };
+          }),
           decayAt: Date.now() + 300_000,
         }));
 
         setSubagentEchoes((current) =>
           current.map((echo) =>
-            echo.id === toolCallId ? { ...echo, status: "completed" } : echo
+            echo.id === toolCallId
+              ? { ...echo, status: toolStatus === "error" ? "completed" : "completed" }
+              : echo
           )
         );
+        if (toolStatus === "error") {
+          const errorMessage = `Tool failed: ${failedToolName || toolCallId}\n${content}`;
+          setError(errorMessage);
+          setStatus("error");
+          appendNotice("Tool Failure", failedToolName || toolCallId);
+          if (repeatedFailure) {
+            appendNotice(
+              "Failure",
+              `Repeated ${failedToolName || "tool"} failure detected; halting retries`
+            );
+          }
+        }
         return;
       }
 
@@ -566,7 +683,7 @@ export function AgentChat() {
         appendNotice("Flow", "Response crystallized");
       }
     },
-    [appendNotice, updateAssistantMessage, updateThread]
+    [appendNotice, appendRuntimeEvent, updateAssistantMessage, updateThread]
   );
 
   const handleSubmit = useCallback(
@@ -732,7 +849,7 @@ export function AgentChat() {
         </svg>
       </motion.button>
 
-      <div className="relative flex min-h-screen flex-col px-3 pb-28 pt-12 sm:px-4 sm:pt-16">
+      <div className="relative flex min-h-screen flex-col px-3 pb-72 pt-12 sm:px-4 sm:pt-16">
         <div className="absolute inset-0">
           <div className="absolute inset-x-0 top-0 h-[44vh] sm:h-[48vh]">
             <OrbScene
@@ -836,7 +953,7 @@ export function AgentChat() {
                 </div>
               </div>
 
-              <div className="relative flex-1 p-4">
+              <div className="relative flex-1 overflow-x-hidden overflow-y-auto scroll-pb-72 px-6 pb-72">
                 {visibleMessages.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0, y: reducedMotion ? 0 : 18 }}
@@ -849,7 +966,7 @@ export function AgentChat() {
                       opacity: { duration: 0.6 },
                       y: { duration: 10, repeat: Infinity, ease: "easeInOut" },
                     }}
-                    className="pointer-events-auto flex h-full min-h-[22rem] flex-col items-center justify-end pb-24 text-center"
+                    className="pointer-events-auto flex h-full min-h-[22rem] flex-col items-center justify-end pb-12 text-center"
                   >
                     <div className="max-w-xl rounded-[1.4rem] border border-white/8 bg-black/18 px-5 py-4 backdrop-blur-md">
                       <p className="font-mono text-xs uppercase tracking-[0.28em] text-white/34">
@@ -946,6 +1063,7 @@ export function AgentChat() {
                     contextRatio={contextUsage / 100}
                     isStreaming={isStreaming}
                     runtimeNotices={runtimeNotices}
+                    runtimeEventCount={runtimeEvents.length}
                   />
                 </motion.div>
               )}

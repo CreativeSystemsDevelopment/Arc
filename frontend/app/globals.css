@@ -159,6 +159,8 @@ select {
   color: rgba(237, 242, 255, 0.92);
   line-height: 1.8;
   text-wrap: pretty;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .prose-agent h1,
@@ -290,4 +292,65 @@ select {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Message stack container with edge fade effect */
+.message-stack-mask {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 8%,
+    black 85%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 8%,
+    black 85%,
+    transparent 100%
+  );
+}
+
+/* Glass depth layers for embedded text effect */
+.glass-depth-layer-back {
+  background: linear-gradient(
+    180deg,
+    rgba(13, 17, 28, 0.08) 0%,
+    rgba(7, 11, 20, 0.04) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.glass-depth-layer-front {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  backdrop-filter: blur(3px);
+}
+
+/* Environmental lighting effects */
+.glass-edge-highlight {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+}
+
+/* Text embedded in glass appearance */
+.text-embedded {
+  color: rgba(237, 242, 255, 0.78);
+  text-shadow: 0 0 20px rgba(200, 210, 255, 0.15);
+}
+
+.text-embedded-fading {
+  color: rgba(237, 242, 255, 0.55);
+  text-shadow: 0 0 16px rgba(200, 210, 255, 0.08);
+  filter: blur(0.3px);
 }

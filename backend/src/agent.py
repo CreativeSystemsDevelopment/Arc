@@ -8,6 +8,7 @@ The local FastAPI backend follows the documented Deep Agents pattern:
 """
 
 from deepagents import create_deep_agent
+from deepagents.backends import LocalShellBackend
 from langgraph.checkpoint.memory import MemorySaver
 
 from src.middleware import ARC_MIDDLEWARE
@@ -32,6 +33,13 @@ def build_agent():
 
     # Checkpointing for thread persistence and HITL
     checkpointer = MemorySaver()
+    # Enable direct host shell execution for Arc's execute tool.
+    # This backend intentionally exposes real filesystem + shell capabilities.
+    shell_backend = LocalShellBackend(
+        root_dir="/home/eshan/arc/Arc",
+        virtual_mode=False,
+        inherit_env=True,
+    )
 
     agent = create_deep_agent(
         model=model,
@@ -53,10 +61,10 @@ def build_agent():
             uiux_subagent,
         ],
         checkpointer=checkpointer,
+        backend=shell_backend,
         # Human-in-the-loop for sensitive operations
         interrupt_on={
             "delete_file": True,  # Approve, edit, or reject
-            "execute": {"allowed_decisions": ["approve", "reject"]},  # No editing commands
         },
     )
 
