@@ -521,7 +521,32 @@ async def _stream_graph(
     emitted_tool_result_signatures: set[str] = set()
 
     try:
-        async for chunk in agent.astream(input_data, config=config, stream_mode="updates"):
+        stream_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def produce_sync_chunks() -> None:
+            try:
+                for sync_chunk in agent.stream(
+                    input_data, config=config, stream_mode="updates"
+                ):
+                    loop.call_soon_threadsafe(
+                        stream_queue.put_nowait, ("chunk", sync_chunk)
+                    )
+            except Exception as exc:  # pragma: no cover - producer safety
+                loop.call_soon_threadsafe(stream_queue.put_nowait, ("error", exc))
+            finally:
+                loop.call_soon_threadsafe(stream_queue.put_nowait, ("done", None))
+
+        producer_task = asyncio.create_task(asyncio.to_thread(produce_sync_chunks))
+
+        while True:
+            kind, payload = await stream_queue.get()
+            if kind == "done":
+                break
+            if kind == "error":
+                raise payload
+
+            chunk = payload
             events = _extract_events(
                 chunk,
                 ai_last_content_by_id=ai_last_content_by_id,
@@ -619,6 +644,7 @@ async def _stream_graph(
                                     fail_fast_done_runtime,
                                     event_id=fail_fast_done_runtime["event_id"],
                                 )
+                                producer_task.cancel()
                                 return
             now = time()
             if now - last_heartbeat_ts >= 8:
@@ -639,6 +665,8 @@ async def _stream_graph(
                 seq += 1
                 last_heartbeat_ts = now
             await asyncio.sleep(0)
+
+        await producer_task
 
         done_status_payload = {"status": "done"}
         yield _sse("status", done_status_payload)
