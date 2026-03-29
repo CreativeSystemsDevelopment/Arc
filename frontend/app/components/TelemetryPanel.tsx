@@ -23,6 +23,8 @@ interface TelemetryPanelProps {
   requiredSignalClasses?: string[];
   observedSignalClasses?: string[];
   missingSignalClasses?: string[];
+  runtimeHeartbeatAgeMs?: number | null;
+  resumeAckCount?: number;
 }
 
 function metricTone(value: number, warning: number, danger: number) {
@@ -45,6 +47,8 @@ export function TelemetryPanel({
   requiredSignalClasses = [],
   observedSignalClasses = [],
   missingSignalClasses = [],
+  runtimeHeartbeatAgeMs = null,
+  resumeAckCount = 0,
 }: TelemetryPanelProps) {
   const snapshot = health?.snapshot;
   const cpu = snapshot?.cpu_percent ?? 0;
@@ -62,6 +66,18 @@ export function TelemetryPanel({
       : health?.status === "warning"
         ? "text-amber-100"
         : "text-emerald-100";
+  const heartbeatTone =
+    runtimeHeartbeatAgeMs == null
+      ? "text-white/45"
+      : runtimeHeartbeatAgeMs > 15000
+      ? "text-amber-200"
+      : "text-emerald-200";
+  const heartbeatLabel =
+    runtimeHeartbeatAgeMs == null
+      ? "n/a"
+      : runtimeHeartbeatAgeMs < 1000
+      ? "now"
+      : `${Math.round(runtimeHeartbeatAgeMs / 1000)}s`;
 
   return (
     <motion.aside
@@ -111,6 +127,12 @@ export function TelemetryPanel({
           </div>
           <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
             Coverage <span className={`ml-2 ${coverageMissingCount > 0 ? "text-amber-200" : "text-emerald-200"}`}>{coverageMissingCount === 0 ? "ok" : `-${coverageMissingCount}`}</span>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
+            Heartbeat <span className={`ml-2 ${heartbeatTone}`}>{heartbeatLabel}</span>
+          </div>
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-white/48">
+            Resume Ack <span className="ml-2 text-cyan-200">{resumeAckCount}</span>
           </div>
         </div>
 

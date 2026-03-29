@@ -142,7 +142,8 @@ export interface RuntimeEventEnvelope {
   thread_id: string;
   scope: string;
   type: string;
-  severity: "info" | "error";
+  severity: "info" | "warn" | "error";
+  signal_class?: string;
   legacy_event: string;
   payload: Record<string, unknown>;
 }

@@ -268,6 +268,75 @@ select {
   font-weight: 700;
 }
 
+.arc-inline-image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(183, 208, 255, 0.16);
+  background: rgba(8, 12, 20, 0.45);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+  margin: 0.6rem 0;
+}
+
+.arc-mermaid {
+  margin: 0.75rem 0;
+  border-radius: 1rem;
+  border: 1px solid rgba(183, 208, 255, 0.16);
+  background: linear-gradient(
+    180deg,
+    rgba(8, 12, 22, 0.92) 0%,
+    rgba(8, 11, 18, 0.84) 100%
+  );
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.36);
+  overflow-x: auto;
+  padding: 0.9rem;
+}
+
+.arc-mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.arc-mermaid-loading {
+  margin: 0.75rem 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(183, 208, 255, 0.15);
+  background: rgba(10, 14, 24, 0.66);
+  color: rgba(226, 236, 255, 0.72);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.65rem;
+}
+
+.arc-mermaid-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: rgba(103, 232, 249, 0.9);
+  box-shadow: 0 0 10px rgba(103, 232, 249, 0.5);
+}
+
+.arc-mermaid-fallback {
+  margin: 0.75rem 0;
+}
+
+.arc-mermaid-label {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(252, 165, 165, 0.86);
+}
+
 @keyframes arc-shimmer {
   0% {
     opacity: 0.2;

@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import type { Variants } from "framer-motion";
 
 import { ArcMarkdown } from "./ArcMarkdown";
 import type { ArcMessage } from "./types";
@@ -48,7 +49,7 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
   // Limit to max visible messages for the stack effect
   const visibleMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
 
-  const messageVariants = prefersReducedMotion
+  const messageVariants: Variants = prefersReducedMotion
     ? {
         hidden: { opacity: 0 },
         visible: { opacity: 1, transition: { duration: 0.2 } },
@@ -65,7 +66,7 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
           y: 0,
           filter: "blur(0px)",
           transition: {
-            type: "spring",
+            type: "spring" as const,
             stiffness: 400,
             damping: 30,
           },

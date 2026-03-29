@@ -94,6 +94,7 @@ function parseRuntimeEvent(
   const scope = input.scope;
   const type = input.type;
   const severity = input.severity;
+  const signalClass = input.signal_class;
   const legacyEvent = input.legacy_event;
   const payload = input.payload;
 
@@ -105,7 +106,7 @@ function parseRuntimeEvent(
     typeof threadId !== "string" ||
     typeof scope !== "string" ||
     typeof type !== "string" ||
-    (severity !== "info" && severity !== "error") ||
+    (severity !== "info" && severity !== "warn" && severity !== "error") ||
     typeof legacyEvent !== "string" ||
     !payload ||
     typeof payload !== "object" ||
@@ -123,12 +124,14 @@ function parseRuntimeEvent(
     scope,
     type,
     severity,
+    signal_class: typeof signalClass === "string" ? signalClass : undefined,
     legacy_event: legacyEvent,
     payload: payload as Record<string, unknown>,
   };
 }
 
 function signalClassFromRuntimeEvent(event: RuntimeEventEnvelope): string {
+  if (event.signal_class) return event.signal_class;
   if (event.type === "status" || event.type === "message") {
     return "model_lifecycle";
   }
@@ -170,6 +173,8 @@ export function AgentChat() {
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEventEnvelope[]>([]);
   const [runtimeGapCount, setRuntimeGapCount] = useState(0);
   const [coverageMissingCount, setCoverageMissingCount] = useState(0);
+  const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
+  const [resumeAckCount, setResumeAckCount] = useState(0);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -266,14 +271,22 @@ export function AgentChat() {
     return runtimeEvents.slice(0, MAX_TIMELINE_EVENTS);
   }, [runtimeEvents]);
 
+  const latestRuntimeCursor = useMemo(() => {
+    if (runtimeEvents.length === 0) return null;
+    const [latest] = runtimeEvents;
+    return { event_id: latest.event_id, seq: latest.seq };
+  }, [runtimeEvents]);
+
+  const runtimeHeartbeatAgeMs = lastHeartbeatAt
+    ? Date.now() - lastHeartbeatAt
+    : null;
+
   // Panel auto-minimize state
   const [leftMinimized, setLeftMinimized] = useState(false);
   const [rightMinimized, setRightMinimized] = useState(false);
   const [leftHovered, setLeftHovered] = useState(false);
   const [rightHovered, setRightHovered] = useState(false);
   const [uiSettings, setUiSettings] = useState({
-    autoMinimize: true,
-    autoMinimizeDelay: 3000,
     reducedMotion: false,
     audioEnabled: false,
     orbGlow: 1.0,
@@ -286,21 +299,6 @@ export function AgentChat() {
     showParticles: true,
     ambientLight: 0.8,
   });
-
-  // Auto-minimize side panels when idle (configurable delay after idle state detected)
-  useEffect(() => {
-    if (!uiSettings.autoMinimize) return;
-    if (status === "idle" && !isStreaming && todos.length === 0 && toolCalls.length === 0) {
-      const timer = setTimeout(() => {
-        setLeftMinimized(true);
-        setRightMinimized(true);
-      }, uiSettings.autoMinimizeDelay);
-      return () => clearTimeout(timer);
-    } else {
-      setLeftMinimized(false);
-      setRightMinimized(false);
-    }
-  }, [status, isStreaming, todos.length, toolCalls.length, uiSettings.autoMinimize, uiSettings.autoMinimizeDelay]);
 
   const connectionStatus = useMemo(() => {
     if (error) return "offline" as const;
@@ -560,6 +558,17 @@ export function AgentChat() {
 
         appendRuntimeEvent(envelope);
 
+        if (envelope.type === "stream.heartbeat") {
+          setLastHeartbeatAt(Date.now());
+          return;
+        }
+
+        if (envelope.type === "stream.resume_ack") {
+          setResumeAckCount((count) => count + 1);
+          appendNotice("Stream Resume", "Resume cursor acknowledged");
+          return;
+        }
+
         if (envelope.type === "error") {
           appendNotice("Runtime Error", String(envelope.payload.error ?? "Unknown"));
           return;
@@ -574,16 +583,15 @@ export function AgentChat() {
         return;
       }
 
+      if (event === "heartbeat") {
+        setLastHeartbeatAt(Date.now());
+        return;
+      }
+
       if (event === "status") {
         const nextStatus = data.status as AgentStatus;
         if (nextStatus) {
           setStatus(nextStatus);
-          if (nextStatus === "planning") {
-            setPanel("plan");
-          }
-          if (nextStatus === "working") {
-            setPanel("tools");
-          }
         }
         return;
       }
@@ -709,7 +717,6 @@ export function AgentChat() {
           todos: parsed,
           updatedAt: Date.now(),
         }));
-        setPanel("plan");
         return;
       }
 
@@ -797,14 +804,18 @@ export function AgentChat() {
       setError(null);
       setIsStreaming(true);
       setStatus("planning");
-      setPanel("plan");
       appendNotice("Command", "Prompt fed into the Orb");
 
       try {
         const response = await fetch(`${backendBaseUrl}/invoke/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: submittedValue, thread_id: activeThread.id }),
+          body: JSON.stringify({
+            message: submittedValue,
+            thread_id: activeThread.id,
+            last_event_id: latestRuntimeCursor?.event_id ?? null,
+            last_seq: latestRuntimeCursor?.seq ?? null,
+          }),
         });
 
         if (!response.ok) {
@@ -865,6 +876,7 @@ export function AgentChat() {
       handleSlashCommand,
       handleSseEvent,
       isStreaming,
+      latestRuntimeCursor,
       updateThread,
     ]
   );
@@ -914,7 +926,7 @@ export function AgentChat() {
         </svg>
       </motion.button>
 
-      <div className="relative flex min-h-screen flex-col px-3 pb-72 pt-12 sm:px-4 sm:pt-16">
+      <div className="relative flex h-screen flex-col px-3 pb-3 pt-12 sm:px-4 sm:pb-4 sm:pt-16">
         <div className="absolute inset-0">
           <div className="absolute inset-x-0 top-0 h-[44vh] sm:h-[48vh]">
             <OrbScene
@@ -925,85 +937,176 @@ export function AgentChat() {
           </div>
         </div>
 
-        <div className="relative z-10 grid min-h-[calc(100vh-8rem)] grid-cols-1 gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          {/* Left Panel - Minimizable */}
-          <div
-            className="hidden xl:block"
-            onMouseEnter={() => setLeftHovered(true)}
-            onMouseLeave={() => setLeftHovered(false)}
-          >
-            <AnimatePresence mode="wait">
-              {panel === "plan" && (!leftMinimized || leftHovered) ? (
-                <PlanConstellation
-                  key="plan-edge"
-                  todos={todos}
-                  visible={true}
-                  onClose={() => setPanel("telemetry")}
-                />
-              ) : leftMinimized && !leftHovered ? (
-                /* Minimized Left Indicator */
-                <motion.div
-                  key="left-min"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: "3rem" }}
-                  exit={{ opacity: 0, width: 0 }}
-                  className="flex h-full flex-col items-center gap-3 py-4"
-                >
-                  <div className="h-12 w-1 rounded-full bg-gradient-to-b from-violet-400/40 to-transparent" />
-                  <div className="flex flex-col gap-2">
-                    {todos.length > 0 && (
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-400/20 text-[10px] text-violet-200">
-                        {todos.filter(t => t.status === "in_progress").length}
+        <div className="relative z-10 min-h-0 flex-1">
+          <div className="relative flex h-full flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
+            {/* Left dock - inside main panel edge, below header */}
+            <div
+              className="absolute bottom-0 left-0 top-[3.5rem] z-20 hidden xl:block"
+              onMouseEnter={() => setLeftHovered(true)}
+              onMouseLeave={() => setLeftHovered(false)}
+            >
+              <div className="h-full w-[22rem] px-2 py-2">
+                <AnimatePresence mode="wait">
+                  {panel === "plan" && (!leftMinimized || leftHovered) ? (
+                    <PlanConstellation
+                      key="plan-edge"
+                      todos={todos}
+                      visible={true}
+                      onClose={() => setPanel("telemetry")}
+                    />
+                  ) : leftMinimized && !leftHovered ? (
+                    <motion.div
+                      key="left-min"
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "3rem" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      className="flex h-full flex-col items-center gap-3 py-4"
+                    >
+                      <div className="h-12 w-1 rounded-full bg-gradient-to-b from-violet-400/40 to-transparent" />
+                      <div className="flex flex-col gap-2">
+                        {todos.length > 0 && (
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-400/20 text-[10px] text-violet-200">
+                            {todos.filter((t) => t.status === "in_progress").length}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="mt-auto flex flex-col gap-2">
-                    <button
-                      onClick={() => setPanel("plan")}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                      <div className="mt-auto flex flex-col gap-2">
+                        <button
+                          onClick={() => setPanel("plan")}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                        >
+                          ≡
+                        </button>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.aside
+                      key="left-idle"
+                      initial={{ opacity: 0, x: -12, width: "22rem" }}
+                      animate={{ opacity: 1, x: 0, width: "22rem" }}
+                      exit={{ opacity: 0, x: -10, width: 0 }}
+                      className="glass-panel flex h-full min-h-[26rem] w-[22rem] flex-col rounded-[1.8rem] p-4"
                     >
-                      ≡
-                    </button>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.aside
-                  key="left-idle"
-                  initial={{ opacity: 0, x: -12, width: "22rem" }}
-                  animate={{ opacity: 1, x: 0, width: "22rem" }}
-                  exit={{ opacity: 0, x: -10, width: 0 }}
-                  className="glass-panel flex h-full min-h-[26rem] w-[22rem] flex-col rounded-[1.8rem] p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
-                      Quick prompts
-                    </div>
-                    <button
-                      onClick={() => setLeftMinimized(true)}
-                      className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
-                    >
-                      ←
-                    </button>
-                  </div>
-                  <div className="mt-4 flex flex-col gap-2">
-                    {idleSuggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        onClick={() => setInput(suggestion)}
-                        className="rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-3 text-left text-sm text-white/66 transition hover:border-white/16 hover:bg-white/[0.06] hover:text-white/88"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </motion.aside>
-              )}
-            </AnimatePresence>
-          </div>
+                      <div className="flex items-center justify-between">
+                        <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
+                          Quick prompts
+                        </div>
+                        <button
+                          onClick={() => setLeftMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                        >
+                          ←
+                        </button>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2">
+                        {idleSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() => setInput(suggestion)}
+                            className="rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-3 text-left text-sm text-white/66 transition hover:border-white/16 hover:bg-white/[0.06] hover:text-white/88"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.aside>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
 
-          <div className="min-h-0">
-            <div className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
+            {/* Right dock - inside main panel edge, below header */}
+            <div
+              className="absolute bottom-0 right-0 top-[3.5rem] z-20 hidden xl:block"
+              onMouseEnter={() => setRightHovered(true)}
+              onMouseLeave={() => setRightHovered(false)}
+            >
+              <div className="h-full w-[23rem] px-2 py-2">
+                <AnimatePresence mode="wait">
+                  {rightMinimized && !rightHovered ? (
+                    <motion.div
+                      key="right-min"
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "3rem" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      className="flex h-full flex-col items-center gap-3 py-4"
+                    >
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => setPanel("telemetry")}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                        >
+                          ○
+                        </button>
+                        <button
+                          onClick={() => setPanel("tools")}
+                          className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] ${panel === "tools" ? "border-cyan-400/40 bg-cyan-400/20 text-cyan-200" : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10"}`}
+                        >
+                          ⚡
+                        </button>
+                      </div>
+                      <div className="mt-auto h-12 w-1 rounded-full bg-gradient-to-t from-cyan-400/40 to-transparent" />
+                    </motion.div>
+                  ) : panel === "tools" ? (
+                    <motion.div
+                      key="tools"
+                      initial={{ opacity: 0, x: 12, width: 0 }}
+                      animate={{ opacity: 1, x: 0, width: "23rem" }}
+                      exit={{ opacity: 0, x: 10, width: 0 }}
+                      className="w-[23rem]"
+                    >
+                      <div className="mb-2 flex items-center justify-end">
+                        <button
+                          onClick={() => setRightMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                        >
+                          →
+                        </button>
+                      </div>
+                      <ToolFilament tools={toolCalls} />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="telemetry"
+                      initial={{ opacity: 0, x: 12, width: 0 }}
+                      animate={{ opacity: 1, x: 0, width: "23rem" }}
+                      exit={{ opacity: 0, x: 10, width: 0 }}
+                      className="w-[23rem]"
+                    >
+                      <div className="mb-2 flex items-center justify-end">
+                        <button
+                          onClick={() => setRightMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                        >
+                          →
+                        </button>
+                      </div>
+                      <TelemetryPanel
+                        identity={uiMeta?.identity ?? null}
+                        health={health}
+                        connectionStatus={connectionStatus}
+                        contextRatio={contextUsage / 100}
+                        isStreaming={isStreaming}
+                        runtimeNotices={runtimeNotices}
+                        runtimeEventCount={runtimeEvents.length}
+                        runtimeGapCount={runtimeGapCount}
+                        coverageMissingCount={coverageMissingCount}
+                        frameworkTimeline={frameworkTimeline}
+                        requiredSignalClasses={requiredSignalClasses}
+                        observedSignalClasses={observedSignalClassList}
+                        missingSignalClasses={missingSignalClasses}
+                        runtimeHeartbeatAgeMs={runtimeHeartbeatAgeMs}
+                        resumeAckCount={resumeAckCount}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Main conduit content area */}
+            <div className="relative flex min-h-0 flex-1 flex-col xl:pl-[22rem] xl:pr-[23rem]">
               <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
                 <div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/34">
@@ -1052,103 +1155,18 @@ export function AgentChat() {
                   />
                 )}
               </div>
-            </div>
-          </div>
 
-          {/* Right Panel - Minimizable */}
-          <div
-            className="hidden xl:block"
-            onMouseEnter={() => setRightHovered(true)}
-            onMouseLeave={() => setRightHovered(false)}
-          >
-            <AnimatePresence mode="wait">
-              {rightMinimized && !rightHovered ? (
-                /* Minimized Right Indicator */
-                <motion.div
-                  key="right-min"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: "3rem" }}
-                  exit={{ opacity: 0, width: 0 }}
-                  className="flex h-full flex-col items-center gap-3 py-4"
-                >
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => setPanel("telemetry")}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
-                    >
-                      ○
-                    </button>
-                    <button
-                      onClick={() => setPanel("tools")}
-                      className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] ${panel === "tools" ? "border-cyan-400/40 bg-cyan-400/20 text-cyan-200" : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10"}`}
-                    >
-                      ⚡
-                    </button>
-                  </div>
-                  <div className="mt-auto h-12 w-1 rounded-full bg-gradient-to-t from-cyan-400/40 to-transparent" />
-                </motion.div>
-              ) : panel === "tools" ? (
-                <motion.div
-                  key="tools"
-                  initial={{ opacity: 0, x: 12, width: 0 }}
-                  animate={{ opacity: 1, x: 0, width: "23rem" }}
-                  exit={{ opacity: 0, x: 10, width: 0 }}
-                  className="w-[23rem]"
-                >
-                  <div className="flex items-center justify-end mb-2">
-                    <button
-                      onClick={() => setRightMinimized(true)}
-                      className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
-                    >
-                      →
-                    </button>
-                  </div>
-                  <ToolFilament tools={toolCalls} />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="telemetry"
-                  initial={{ opacity: 0, x: 12, width: 0 }}
-                  animate={{ opacity: 1, x: 0, width: "23rem" }}
-                  exit={{ opacity: 0, x: 10, width: 0 }}
-                  className="w-[23rem]"
-                >
-                  <div className="flex items-center justify-end mb-2">
-                    <button
-                      onClick={() => setRightMinimized(true)}
-                      className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
-                    >
-                      →
-                    </button>
-                  </div>
-                  <TelemetryPanel
-                    identity={uiMeta?.identity ?? null}
-                    health={health}
-                    connectionStatus={connectionStatus}
-                    contextRatio={contextUsage / 100}
-                    isStreaming={isStreaming}
-                    runtimeNotices={runtimeNotices}
-                    runtimeEventCount={runtimeEvents.length}
-                    runtimeGapCount={runtimeGapCount}
-                    coverageMissingCount={coverageMissingCount}
-                    frameworkTimeline={frameworkTimeline}
-                    requiredSignalClasses={requiredSignalClasses}
-                    observedSignalClasses={observedSignalClassList}
-                    missingSignalClasses={missingSignalClasses}
+              {panel === "plan" && (
+                <div className="mt-3 xl:hidden">
+                  <PlanConstellation
+                    key="plan-mobile"
+                    todos={todos}
+                    visible={true}
+                    onClose={() => setPanel("telemetry")}
                   />
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
-            {panel === "plan" && (
-              <div className="mt-3 xl:hidden">
-                <PlanConstellation
-                  key="plan-mobile"
-                  todos={todos}
-                  visible={true}
-                  onClose={() => setPanel("telemetry")}
-                />
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -1252,35 +1270,11 @@ export function AgentChat() {
                       Panels
                     </h3>
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-white/80">Auto-minimize panels</p>
-                          <p className="text-[11px] text-white/40">Side panels minimize when idle</p>
-                        </div>
-                        <button
-                          onClick={() => setUiSettings(s => ({ ...s, autoMinimize: !s.autoMinimize }))}
-                          className={`h-6 w-11 rounded-full transition-colors ${uiSettings.autoMinimize ? 'bg-violet-500' : 'bg-white/20'}`}
-                        >
-                          <motion.div
-                            animate={{ x: uiSettings.autoMinimize ? 22 : 2 }}
-                            className="h-5 w-5 rounded-full bg-white shadow-sm"
-                          />
-                        </button>
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-white/80">Minimize delay</p>
-                          <span className="font-mono text-xs text-white/50">{Math.round(uiSettings.autoMinimizeDelay / 1000)}s</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="1000"
-                          max="10000"
-                          step="500"
-                          value={uiSettings.autoMinimizeDelay}
-                          onChange={(e) => setUiSettings(s => ({ ...s, autoMinimizeDelay: Number(e.target.value) }))}
-                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
-                        />
+                      <div className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5">
+                        <p className="text-sm text-white/80">Panel transitions</p>
+                        <p className="mt-1 text-[11px] text-white/42">
+                          Panels only move when you explicitly toggle them.
+                        </p>
                       </div>
                       <div>
                         <div className="flex items-center justify-between">

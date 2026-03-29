@@ -595,27 +595,31 @@ async def _stream_graph(
                                         "Failing fast to prevent retry loops."
                                     )
                                 }
+                                fail_fast_runtime = _runtime_event(
+                                    event_type="error",
+                                    payload=fail_fast_payload,
+                                    run_id=run_id,
+                                    thread_id=thread_id,
+                                    seq=seq,
+                                )
                                 yield _sse(
                                     "runtime_event",
-                                    _runtime_event(
-                                        event_type="error",
-                                        payload=fail_fast_payload,
-                                        run_id=run_id,
-                                        thread_id=thread_id,
-                                        seq=seq,
-                                    ),
+                                    fail_fast_runtime,
+                                    event_id=fail_fast_runtime["event_id"],
                                 )
                                 seq += 1
                                 yield _sse("done", {})
+                                fail_fast_done_runtime = _runtime_event(
+                                    event_type="done",
+                                    payload={},
+                                    run_id=run_id,
+                                    thread_id=thread_id,
+                                    seq=seq,
+                                )
                                 yield _sse(
                                     "runtime_event",
-                                    _runtime_event(
-                                        event_type="done",
-                                        payload={},
-                                        run_id=run_id,
-                                        thread_id=thread_id,
-                                        seq=seq,
-                                    ),
+                                    fail_fast_done_runtime,
+                                    event_id=fail_fast_done_runtime["event_id"],
                                 )
                                 return
             now = time()
@@ -640,15 +644,17 @@ async def _stream_graph(
 
         done_status_payload = {"status": "done"}
         yield _sse("status", done_status_payload)
+        done_status_runtime = _runtime_event(
+            event_type="status",
+            payload=done_status_payload,
+            run_id=run_id,
+            thread_id=thread_id,
+            seq=seq,
+        )
         yield _sse(
             "runtime_event",
-            _runtime_event(
-                event_type="status",
-                payload=done_status_payload,
-                run_id=run_id,
-                thread_id=thread_id,
-                seq=seq,
-            ),
+            done_status_runtime,
+            event_id=done_status_runtime["event_id"],
         )
         seq += 1
     except Exception as exc:  # pragma: no cover - defensive streaming path
@@ -660,34 +666,50 @@ async def _stream_graph(
             "error",
             error_payload,
         )
+        error_runtime = _runtime_event(
+            event_type="error",
+            payload=error_payload,
+            run_id=run_id,
+            thread_id=thread_id,
+            seq=seq,
+        )
         yield _sse(
             "runtime_event",
-            _runtime_event(
-                event_type="error",
-                payload=error_payload,
-                run_id=run_id,
-                thread_id=thread_id,
-                seq=seq,
-            ),
+            error_runtime,
+            event_id=error_runtime["event_id"],
         )
         seq += 1
 
     yield _sse("done", {})
+    final_done_runtime = _runtime_event(
+        event_type="done",
+        payload={},
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+    )
     yield _sse(
         "runtime_event",
-        _runtime_event(
-            event_type="done",
-            payload={},
-            run_id=run_id,
-            thread_id=thread_id,
-            seq=seq,
-        ),
+        final_done_runtime,
+        event_id=final_done_runtime["event_id"],
     )
 
 
-async def stream_agent(message: str, thread_id: str) -> AsyncGenerator[str, None]:
+async def stream_agent(
+    message: str,
+    thread_id: str,
+    *,
+    last_event_id: str | None = None,
+    last_seq: int | None = None,
+) -> AsyncGenerator[str, None]:
     """Stream the primary Arc agent."""
-    async for event in _stream_graph(arc_agent, message, thread_id):
+    async for event in _stream_graph(
+        arc_agent,
+        message,
+        thread_id,
+        last_event_id=last_event_id,
+        last_seq=last_seq,
+    ):
         yield event
 
 
@@ -701,7 +723,12 @@ async def stream_minimal_agent(message: str, thread_id: str) -> AsyncGenerator[s
 async def invoke_stream(req: InvokeRequest):
     """Stream the agent response as Server-Sent Events."""
     return StreamingResponse(
-        stream_agent(req.message, req.thread_id),
+        stream_agent(
+            req.message,
+            req.thread_id,
+            last_event_id=req.last_event_id,
+            last_seq=req.last_seq,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -907,6 +934,7 @@ async def ui_meta():
                     "scope",
                     "type",
                     "severity",
+                    "signal_class",
                     "legacy_event",
                     "payload",
                 ],
