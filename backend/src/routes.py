@@ -29,6 +29,7 @@ from pydantic import BaseModel
 from src.agent import get_arc_agent, get_runtime_status
 from src.minimal_agent import current_minimal_model, minimal_agent
 from src.model_factory import current_model_label
+from src.run_supervisor import RunSubmission, run_supervisor
 from src.serialization import serialize_chunk
 from src.subagent_registry import registered_subagents
 from src.tools.vm_health import vm_health_check
@@ -448,6 +449,7 @@ async def _stream_graph(
     message: str,
     thread_id: str,
     *,
+    run_id: str | None = None,
     last_event_id: str | None = None,
     last_seq: int | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -455,7 +457,7 @@ async def _stream_graph(
     config = {"configurable": {"thread_id": thread_id}}
     input_data = {"messages": [{"role": "user", "content": message}]}
 
-    run_id = str(uuid4())
+    run_id = run_id or str(uuid4())
     seq = 0
 
     planning_payload = {"status": "planning"}
@@ -719,13 +721,31 @@ async def stream_minimal_agent(message: str, thread_id: str) -> AsyncGenerator[s
 @router.post("/invoke/stream")
 async def invoke_stream(req: InvokeRequest):
     """Stream the agent response as Server-Sent Events."""
+    run_id = str(uuid4())
+
+    async def detached_stream() -> AsyncGenerator[str, None]:
+        queue = await run_supervisor.submit(
+            RunSubmission(
+                run_id=run_id,
+                message=req.message,
+                thread_id=req.thread_id,
+                last_event_id=req.last_event_id,
+                last_seq=req.last_seq,
+            )
+        )
+        try:
+            # Expose run metadata immediately so clients can correlate reconnects.
+            yield _sse("run", {"run_id": run_id, "thread_id": req.thread_id})
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            await run_supervisor.unsubscribe(run_id, queue)
+
     return StreamingResponse(
-        stream_agent(
-            req.message,
-            req.thread_id,
-            last_event_id=req.last_event_id,
-            last_seq=req.last_seq,
-        ),
+        detached_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -935,6 +955,7 @@ async def ui_meta():
             "coverage": TELEMETRY_COVERAGE,
         },
         "runtime": get_runtime_status(),
+        "supervisor": run_supervisor.status(),
     }
 
 

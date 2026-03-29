@@ -127,7 +127,7 @@ def _build_persistence(workspace_root: str) -> tuple[Any, Any, bool]:
                 store.setup()
             if hasattr(checkpointer, "setup"):
                 checkpointer.setup()
-            checkpointer_mode = "postgres"
+            checkpointer_mode = "postgres_sync"
             async_method = getattr(checkpointer, "aget_tuple", None)
             qualname = ""
             if async_method is not None:
@@ -136,8 +136,10 @@ def _build_persistence(workspace_root: str) -> tuple[Any, Any, bool]:
             if async_method is None or inspect.iscoroutinefunction(async_method) and qualname.startswith(
                 "BaseCheckpointSaver."
             ):
-                checkpointer = MemorySaver()
-                checkpointer_mode = "memory"
+                print(
+                    "[Arc] Sync Postgres checkpointer detected. "
+                    "Run execution must use sync stream for durable checkpoints."
+                )
             # Lightweight probe so startup logs clearly reflect durable availability.
             store.get(namespace=("arc",), key="startup_probe")
             _seed_durable_memory_if_missing(store, workspace_root)
@@ -152,8 +154,7 @@ def _build_persistence(workspace_root: str) -> tuple[Any, Any, bool]:
                 "last_error": None,
             }
             print("[Arc] Unified runtime using durable Postgres persistence.")
-            if checkpointer_mode != "postgres":
-                print("[Arc] Postgres store active; checkpointer running in memory mode for async compatibility.")
+            print("[Arc] Durable sync Postgres checkpointer is active.")
             return store, checkpointer, True
         except Exception as exc:  # pragma: no cover - startup fallback safety
             stack.close()
