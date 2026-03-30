@@ -9,6 +9,8 @@ import type { ArcMessage } from "./types";
 interface DecayStreamProps {
   messages: ArcMessage[];
   onPin: (messageId: string) => void;
+  fontSize?: "small" | "medium" | "large";
+  maxVisible?: number;
 }
 
 const MAX_VISIBLE_MESSAGES = 3;
@@ -43,11 +45,22 @@ function messageVisuals(message: ArcMessage) {
   };
 }
 
-export function DecayStream({ messages, onPin }: DecayStreamProps) {
+export function DecayStream({
+  messages,
+  onPin,
+  fontSize = "medium",
+  maxVisible = MAX_VISIBLE_MESSAGES,
+}: DecayStreamProps) {
   const prefersReducedMotion = useReducedMotion();
 
   // Limit to max visible messages for the stack effect
-  const visibleMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const visibleMessages = messages.slice(-Math.max(1, maxVisible));
+  const contentClass =
+    fontSize === "small"
+      ? "text-sm"
+      : fontSize === "large"
+        ? "text-lg"
+        : "text-base";
 
   const messageVariants: Variants = prefersReducedMotion
     ? {
@@ -88,7 +101,7 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
         <AnimatePresence initial={false} mode="popLayout">
           {visibleMessages.map((message, index) => {
             const visuals = messageVisuals(message);
-            const isOldest = index === 0 && visibleMessages.length === MAX_VISIBLE_MESSAGES;
+            const isOldest = index === 0 && visibleMessages.length === Math.max(1, maxVisible);
             const isNewest = index === visibleMessages.length - 1;
 
             // Fade oldest messages
@@ -135,7 +148,7 @@ export function DecayStream({ messages, onPin }: DecayStreamProps) {
 
                 {/* Message content - appears directly on glass panel */}
                 <div
-                  className="prose-agent"
+                  className={`prose-agent ${contentClass}`}
                   style={{
                     color: isOldest ? "rgba(237, 242, 255, 0.55)" : "rgba(237, 242, 255, 0.85)",
                     textShadow: isOldest ? "none" : visuals.textGlow,

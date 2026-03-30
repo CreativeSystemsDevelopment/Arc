@@ -36,6 +36,58 @@ const MAX_RUNTIME_EVENTS = 400;
 const MAX_TIMELINE_EVENTS = 14;
 const LAST_SEEN_AT_KEY = "arc-last-seen-at";
 const LAST_GREETING_AT_KEY = "arc-last-greeting-at";
+const UI_SETTINGS_KEY = "arc-ui-settings-v1";
+const AI_SETTINGS_KEY = "arc-ai-settings-v1";
+
+type ChatFontSize = "small" | "medium" | "large";
+
+type UiSettings = {
+  reducedMotion: boolean;
+  audioEnabled: boolean;
+  orbGlow: number;
+  panelOpacity: number;
+  chatFontSize: ChatFontSize;
+  orbSpeed: number;
+  orbDistortion: number;
+  orbColors: boolean;
+  showReflections: boolean;
+  showParticles: boolean;
+  ambientLight: number;
+  maxVisibleMessages: number;
+};
+
+type AiSettings = {
+  greetingEnabled: boolean;
+  greetingMinAwaySeconds: number;
+  greetingCooldownSeconds: number;
+  operatorName: string;
+  autoFocusInput: boolean;
+  smoothScroll: boolean;
+};
+
+const DEFAULT_UI_SETTINGS: UiSettings = {
+  reducedMotion: false,
+  audioEnabled: false,
+  orbGlow: 1,
+  panelOpacity: 0.8,
+  chatFontSize: "medium",
+  orbSpeed: 1,
+  orbDistortion: 1,
+  orbColors: true,
+  showReflections: true,
+  showParticles: true,
+  ambientLight: 0.8,
+  maxVisibleMessages: 3,
+};
+
+const DEFAULT_AI_SETTINGS: AiSettings = {
+  greetingEnabled: true,
+  greetingMinAwaySeconds: 120,
+  greetingCooldownSeconds: 60,
+  operatorName: "Shane",
+  autoFocusInput: true,
+  smoothScroll: true,
+};
 
 function createThreadRecord(threadId?: string): ThreadRecord {
   const now = Date.now();
@@ -172,8 +224,8 @@ export function AgentChat() {
       "NEXT_PUBLIC_BACKEND_URL is required. No fallback backend URL is allowed."
     );
   }
-  const [manualReducedMotion, setManualReducedMotion] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI_SETTINGS);
+  const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI_SETTINGS);
 
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeThreadId, setActiveThreadId] = useState("");
@@ -199,7 +251,7 @@ export function AgentChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const lastSeqByRunRef = useRef<Map<string, number>>(new Map());
-  const reducedMotion = Boolean(prefersReducedMotion) || manualReducedMotion;
+  const reducedMotion = Boolean(prefersReducedMotion) || uiSettings.reducedMotion;
 
   useEffect(() => {
     const stored = loadThreads();
@@ -213,6 +265,34 @@ export function AgentChat() {
     setThreads([initial]);
     setActiveThreadId(initial.id);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const uiRaw = window.localStorage.getItem(UI_SETTINGS_KEY);
+      if (uiRaw) {
+        const parsed = JSON.parse(uiRaw) as Partial<UiSettings>;
+        setUiSettings((current) => ({ ...current, ...parsed }));
+      }
+      const aiRaw = window.localStorage.getItem(AI_SETTINGS_KEY);
+      if (aiRaw) {
+        const parsed = JSON.parse(aiRaw) as Partial<AiSettings>;
+        setAiSettings((current) => ({ ...current, ...parsed }));
+      }
+    } catch {
+      // Keep defaults if storage is malformed.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings));
+  }, [uiSettings]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(aiSettings));
+  }, [aiSettings]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -266,8 +346,8 @@ export function AgentChat() {
   const visibleMessages = useMemo(() => {
     return messages
       .filter((message) => message.pinned || message.decayAt > Date.now())
-      .slice(-MAX_VISIBLE_MESSAGES);
-  }, [messages]);
+      .slice(-Math.max(1, uiSettings.maxVisibleMessages));
+  }, [messages, uiSettings.maxVisibleMessages]);
 
   const toolCalls = useMemo(() => {
     return messages.flatMap((message) => message.toolCalls).slice(-6);
@@ -317,19 +397,6 @@ export function AgentChat() {
   const [rightMinimized, setRightMinimized] = useState(false);
   const [leftHovered, setLeftHovered] = useState(false);
   const [rightHovered, setRightHovered] = useState(false);
-  const [uiSettings, setUiSettings] = useState({
-    reducedMotion: false,
-    audioEnabled: false,
-    orbGlow: 1.0,
-    panelOpacity: 0.8,
-    chatFontSize: "medium" as "small" | "medium" | "large",
-    orbSpeed: 1.0,
-    orbDistortion: 1.0,
-    orbColors: true,
-    showReflections: true,
-    showParticles: true,
-    ambientLight: 0.8,
-  });
 
   const connectionStatus = useMemo(() => {
     if (error) return "offline" as const;
@@ -442,13 +509,18 @@ export function AgentChat() {
 
           // Only greet on meaningful return gaps and avoid repeated greetings
           // from rapid refreshes/reconnects.
-          if (awaySeconds >= 120 && now - lastGreetingAt > 60_000) {
+          if (
+            aiSettings.greetingEnabled &&
+            awaySeconds >= Math.max(0, aiSettings.greetingMinAwaySeconds) &&
+            now - lastGreetingAt >
+              Math.max(10, aiSettings.greetingCooldownSeconds) * 1000
+          ) {
             const greetingResponse = await fetch(`${backendBaseUrl}/ui/greeting`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 away_seconds: awaySeconds,
-                operator_name: "Shane",
+                operator_name: aiSettings.operatorName?.trim() || "Shane",
               }),
             });
 
@@ -480,7 +552,7 @@ export function AgentChat() {
     }
 
     void fetchUiBootstrap();
-  }, [activeThreadId, backendBaseUrl]);
+  }, [activeThreadId, aiSettings, backendBaseUrl]);
 
   const fetchWorkspace = useCallback(async () => {
     try {
@@ -957,14 +1029,17 @@ export function AgentChat() {
   );
 
   useEffect(() => {
-    if (!isStreaming) {
+    if (!isStreaming && aiSettings.autoFocusInput) {
       inputRef.current?.focus();
     }
-  }, [isStreaming]);
+  }, [aiSettings.autoFocusInput, isStreaming]);
 
   useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [visibleMessages]);
+    scrollAnchorRef.current?.scrollIntoView({
+      behavior: aiSettings.smoothScroll ? "smooth" : "auto",
+      block: "end",
+    });
+  }, [aiSettings.smoothScroll, visibleMessages]);
 
   return (
     <div className="arc-grid arc-abyss arc-chamber relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(84,70,190,0.24)_0%,rgba(10,12,20,0)_34%),linear-gradient(180deg,#04050a_0%,#070910_46%,#030409_100%)] text-white">
@@ -1012,12 +1087,22 @@ export function AgentChat() {
               mode={orbMode}
               contextRatio={contextUsage / 100}
               reducedMotion={reducedMotion}
+              orbSpeed={uiSettings.orbSpeed}
+              orbDistortion={uiSettings.orbDistortion}
+              orbGlow={uiSettings.orbGlow}
+              ambientLight={uiSettings.ambientLight}
+              orbColors={uiSettings.orbColors}
+              showParticles={uiSettings.showParticles}
+              showReflections={uiSettings.showReflections}
             />
           </div>
         </div>
 
         <div className="relative z-10 min-h-0 flex-1">
-          <div className="relative flex h-full flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]">
+          <div
+            className="relative flex h-full flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,22,0.06)_0%,rgba(8,11,18,0.12)_12%,rgba(5,7,12,0.22)_30%,rgba(2,3,6,0.72)_100%)] shadow-[0_30px_120px_rgba(0,0,0,0.34)] backdrop-blur-[10px]"
+            style={{ opacity: uiSettings.panelOpacity }}
+          >
             {/* Left dock - inside main panel edge, below header */}
             <div
               className="absolute left-0 top-[3.75rem] z-20 hidden xl:block"
@@ -1229,6 +1314,8 @@ export function AgentChat() {
                 ) : (
                   <DecayStream
                     messages={visibleMessages}
+                    fontSize={uiSettings.chatFontSize}
+                    maxVisible={uiSettings.maxVisibleMessages}
                     onPin={(messageId) => {
                       const target = messages.find((message) => message.id === messageId);
                       setPinned(messageId, !target?.pinned);
@@ -1256,11 +1343,19 @@ export function AgentChat() {
                   input={input}
                   isStreaming={isStreaming}
                   reducedMotion={reducedMotion}
-                  audioEnabled={audioEnabled}
+                  audioEnabled={uiSettings.audioEnabled}
                   toggleReducedMotion={() =>
-                    setManualReducedMotion((current) => !current)
+                    setUiSettings((current) => ({
+                      ...current,
+                      reducedMotion: !current.reducedMotion,
+                    }))
                   }
-                  toggleAudio={() => setAudioEnabled((current) => !current)}
+                  toggleAudio={() =>
+                    setUiSettings((current) => ({
+                      ...current,
+                      audioEnabled: !current.audioEnabled,
+                    }))
+                  }
                   commands={uiMeta?.slash_commands ?? []}
                   setInput={setInput}
                   onExecuteCommand={(command) => {
@@ -1557,6 +1652,160 @@ export function AgentChat() {
                         >
                           <motion.div
                             animate={{ x: uiSettings.reducedMotion ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Visible messages</p>
+                          <span className="font-mono text-xs text-white/50">
+                            {uiSettings.maxVisibleMessages}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="2"
+                          max="12"
+                          step="1"
+                          value={uiSettings.maxVisibleMessages}
+                          onChange={(e) =>
+                            setUiSettings((s) => ({
+                              ...s,
+                              maxVisibleMessages: Number(e.target.value),
+                            }))
+                          }
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI Section */}
+                  <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.02] p-4">
+                    <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-indigo-300">
+                        <path d="M12 3L20 7V17L12 21L4 17V7L12 3Z" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M12 8V12L15 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                      AI Settings
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Greeting policy</p>
+                          <p className="text-[11px] text-white/40">Contextual return greetings from Arc</p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              greetingEnabled: !s.greetingEnabled,
+                            }))
+                          }
+                          className={`h-6 w-11 rounded-full transition-colors ${aiSettings.greetingEnabled ? "bg-violet-500" : "bg-white/20"}`}
+                        >
+                          <motion.div
+                            animate={{ x: aiSettings.greetingEnabled ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div>
+                        <p className="text-sm text-white/80">Operator name</p>
+                        <input
+                          type="text"
+                          value={aiSettings.operatorName}
+                          onChange={(e) =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              operatorName: e.target.value,
+                            }))
+                          }
+                          className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/30"
+                          placeholder="Shane"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Greeting minimum away time</p>
+                          <span className="font-mono text-xs text-white/50">
+                            {aiSettings.greetingMinAwaySeconds}s
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="30"
+                          max="3600"
+                          step="30"
+                          value={aiSettings.greetingMinAwaySeconds}
+                          onChange={(e) =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              greetingMinAwaySeconds: Number(e.target.value),
+                            }))
+                          }
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Greeting cooldown</p>
+                          <span className="font-mono text-xs text-white/50">
+                            {aiSettings.greetingCooldownSeconds}s
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="10"
+                          max="900"
+                          step="10"
+                          value={aiSettings.greetingCooldownSeconds}
+                          onChange={(e) =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              greetingCooldownSeconds: Number(e.target.value),
+                            }))
+                          }
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Auto-focus input after responses</p>
+                          <p className="text-[11px] text-white/40">Keep typing flow uninterrupted</p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              autoFocusInput: !s.autoFocusInput,
+                            }))
+                          }
+                          className={`h-6 w-11 rounded-full transition-colors ${aiSettings.autoFocusInput ? "bg-violet-500" : "bg-white/20"}`}
+                        >
+                          <motion.div
+                            animate={{ x: aiSettings.autoFocusInput ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Smooth auto-scroll</p>
+                          <p className="text-[11px] text-white/40">Animate stream anchor movement</p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              smoothScroll: !s.smoothScroll,
+                            }))
+                          }
+                          className={`h-6 w-11 rounded-full transition-colors ${aiSettings.smoothScroll ? "bg-violet-500" : "bg-white/20"}`}
+                        >
+                          <motion.div
+                            animate={{ x: aiSettings.smoothScroll ? 22 : 2 }}
                             className="h-5 w-5 rounded-full bg-white shadow-sm"
                           />
                         </button>
