@@ -1,0 +1,31 @@
+{
+  "document_id": "94e5e889",
+  "filename": "00_MANUAL CONTENTS.pdf",
+  "document_type": "manual",
+  "total_pages": 3,
+  "pages_processed": 3,
+  "word_count": 413,
+  "has_images": true,
+  "metadata": {
+    "machine_model": "UH1650 DIE CASTING MACHINE"
+  },
+  "page_samples": [
+    {
+      "page": 1,
+      "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                 UH1650 \u30c0\u30a4\u30ab\u30b9\u30c8\u30de\u30b7\u30f3 \u53ca\u3073\u81ea\u52d5\u5316\u88c5\u7f6e                          \n  ",
+      "word_count": 150
+    },
+    {
+      "page": 2,
+      "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                 UH1650 \u30c0\u30a4\u30ab\u30b9\u30c8\u30de\u30b7\u30f3 \u53ca\u3073\u81ea\u52d5\u5316\u88c5\u7f6e                          \n  ",
+      "word_count": 64
+    },
+    {
+      "page": 3,
+      "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                 UH1650 \u30c0\u30a4\u30ab\u30b9\u30c8\u30de\u30b7\u30f3 \u53ca\u3073\u81ea\u52d5\u5316\u88c5\u7f6e                          \n  ",
+      "word_count": 199
+    }
+  ],
+  "extracted_at": "2026-03-30T01:32:59.017331",
+  "status": "success"
+}

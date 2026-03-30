@@ -1,0 +1,99 @@
+{
+  "started_at": "2026-03-30T01:32:58.599205",
+  "completed": [
+    {
+      "document_id": "94e5e889",
+      "filename": "00_MANUAL CONTENTS.pdf",
+      "document_type": "manual",
+      "total_pages": 3,
+      "pages_processed": 3,
+      "word_count": 413,
+      "has_images": true,
+      "metadata": {
+        "machine_model": "UH1650 DIE CASTING MACHINE"
+      },
+      "page_samples": [
+        {
+          "page": 1,
+          "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                 UH1650 \u30c0\u30a4\u30ab\u30b9\u30c8\u30de\u30b7\u30f3 \u53ca\u3073\u81ea\u52d5\u5316\u88c5\u7f6e                          \n  ",
+          "word_count": 150
+        },
+        {
+          "page": 2,
+          "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                 UH1650 \u30c0\u30a4\u30ab\u30b9\u30c8\u30de\u30b7\u30f3 \u53ca\u3073\u81ea\u52d5\u5316\u88c5\u7f6e                          \n  ",
+          "word_count": 64
+        },
+        {
+          "page": 3,
+          "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                 UH1650 \u30c0\u30a4\u30ab\u30b9\u30c8\u30de\u30b7\u30f3 \u53ca\u3073\u81ea\u52d5\u5316\u88c5\u7f6e                          \n  ",
+          "word_count": 199
+        }
+      ],
+      "extracted_at": "2026-03-30T01:32:59.017331",
+      "status": "success",
+      "output_file": "/home/eshan/arc/Arc/workspace/atlas/1650-extraction/94e5e889_00_MANUAL CONTENTS.json"
+    },
+    {
+      "document_id": "f105a2f2",
+      "filename": "01_AC SERVO MR-J3-B TECHNICAL MANUAL(HYDLAURIC).pdf",
+      "document_type": "manual",
+      "total_pages": 424,
+      "pages_processed": 50,
+      "word_count": 11231,
+      "has_images": false,
+      "metadata": {},
+      "page_samples": [
+        {
+          "page": 1,
+          "text_preview": "                                                                                                                                                                                       \n                                                                                                                                                                                       \n                                                                                                                                    ",
+          "word_count": 35
+        },
+        {
+          "page": 2,
+          "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n  ",
+          "word_count": 242
+        },
+        {
+          "page": 3,
+          "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n  ",
+          "word_count": 538
+        }
+      ],
+      "extracted_at": "2026-03-30T01:35:11.819033",
+      "status": "success",
+      "output_file": "/home/eshan/arc/Arc/workspace/atlas/1650-extraction/f105a2f2_01_AC SERVO MR-J3-B TECHNICAL MANUAL(HYDLAURIC).json"
+    },
+    {
+      "document_id": "4c419f59",
+      "filename": "01_Schematic_151-E8810-202-0(A4).pdf",
+      "document_type": "schematic",
+      "total_pages": 129,
+      "pages_processed": 129,
+      "word_count": 39931,
+      "has_images": false,
+      "metadata": {},
+      "page_samples": [
+        {
+          "page": 1,
+          "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n  ",
+          "word_count": 176
+        },
+        {
+          "page": 2,
+          "text_preview": "                                                                                  \n         A     B    C     D    E     F    G     H    I     J    K     L    M      \n                                                                                  \n                                                                                  \n                                                                               1  \n                                                                                  \n  ",
+          "word_count": 224
+        },
+        {
+          "page": 3,
+          "text_preview": "                                                                                  \n         A     B    C     D    E     F    G     H    I     J    K     L    M      \n                                                                                  \n                                                                                  \n                                                                               1  \n                                                                                  \n  ",
+          "word_count": 353
+        }
+      ],
+      "extracted_at": "2026-03-30T01:35:52.002018",
+      "status": "success",
+      "output_file": "/home/eshan/arc/Arc/workspace/atlas/1650-extraction/4c419f59_01_Schematic_151-E8810-202-0(A4).json"
+    }
+  ],
+  "failed": [],
+  "in_progress": []
+}

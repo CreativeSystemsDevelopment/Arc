@@ -1,0 +1,29 @@
+{
+  "document_id": "4c419f59",
+  "filename": "01_Schematic_151-E8810-202-0(A4).pdf",
+  "document_type": "schematic",
+  "total_pages": 129,
+  "pages_processed": 129,
+  "word_count": 39931,
+  "has_images": false,
+  "metadata": {},
+  "page_samples": [
+    {
+      "page": 1,
+      "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n  ",
+      "word_count": 176
+    },
+    {
+      "page": 2,
+      "text_preview": "                                                                                  \n         A     B    C     D    E     F    G     H    I     J    K     L    M      \n                                                                                  \n                                                                                  \n                                                                               1  \n                                                                                  \n  ",
+      "word_count": 224
+    },
+    {
+      "page": 3,
+      "text_preview": "                                                                                  \n         A     B    C     D    E     F    G     H    I     J    K     L    M      \n                                                                                  \n                                                                                  \n                                                                               1  \n                                                                                  \n  ",
+      "word_count": 353
+    }
+  ],
+  "extracted_at": "2026-03-30T01:35:52.002018",
+  "status": "success"
+}

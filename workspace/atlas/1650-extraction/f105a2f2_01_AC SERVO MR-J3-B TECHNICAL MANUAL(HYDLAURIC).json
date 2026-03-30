@@ -1,0 +1,29 @@
+{
+  "document_id": "f105a2f2",
+  "filename": "01_AC SERVO MR-J3-B TECHNICAL MANUAL(HYDLAURIC).pdf",
+  "document_type": "manual",
+  "total_pages": 424,
+  "pages_processed": 50,
+  "word_count": 11231,
+  "has_images": false,
+  "metadata": {},
+  "page_samples": [
+    {
+      "page": 1,
+      "text_preview": "                                                                                                                                                                                       \n                                                                                                                                                                                       \n                                                                                                                                    ",
+      "word_count": 35
+    },
+    {
+      "page": 2,
+      "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n  ",
+      "word_count": 242
+    },
+    {
+      "page": 3,
+      "text_preview": "                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n                                                                                  \n  ",
+      "word_count": 538
+    }
+  ],
+  "extracted_at": "2026-03-30T01:35:11.819033",
+  "status": "success"
+}
