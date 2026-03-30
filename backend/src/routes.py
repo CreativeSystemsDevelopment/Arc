@@ -24,12 +24,13 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
+from src.arc_runtime import ArcRunRequest, arc_runtime
 from src.agent import get_arc_agent, get_runtime_status
 from src.minimal_agent import current_minimal_model, minimal_agent
-from src.model_factory import current_model_label
-from src.run_supervisor import RunSubmission, run_supervisor
+from src.model_factory import build_chat_model, current_model_label
 from src.serialization import serialize_chunk
 from src.subagent_registry import registered_subagents
 from src.tools.vm_health import vm_health_check
@@ -81,6 +82,11 @@ class InvokeRequest(BaseModel):
 class AttachRunRequest(BaseModel):
     last_event_id: str | None = None
     last_seq: int | None = None
+
+
+class GreetingRequest(BaseModel):
+    away_seconds: int | None = None
+    operator_name: str | None = "Shane"
 
 
 def _sse(event: str, data: Any, *, event_id: str | None = None) -> str:
@@ -757,8 +763,8 @@ async def invoke_stream(req: InvokeRequest):
     run_id = str(uuid4())
 
     async def detached_stream() -> AsyncGenerator[str, None]:
-        queue = await run_supervisor.submit(
-            RunSubmission(
+        queue = await arc_runtime.submit(
+            ArcRunRequest(
                 run_id=run_id,
                 message=req.message,
                 thread_id=req.thread_id,
@@ -775,7 +781,7 @@ async def invoke_stream(req: InvokeRequest):
                     break
                 yield event
         finally:
-            await run_supervisor.unsubscribe(run_id, queue)
+            await arc_runtime.unsubscribe(run_id, queue)
 
     return StreamingResponse(
         detached_stream(),
@@ -802,16 +808,16 @@ async def invoke_minimal_stream(req: InvokeRequest):
 
 @router.get("/runs/{run_id}")
 async def run_status(run_id: str):
-    """Return supervisor/metadata state for a persisted run."""
-    queue, run_meta = await run_supervisor.attach(run_id)
+    """Return Arc runtime metadata state for a persisted run."""
+    queue, run_meta = await arc_runtime.attach(run_id)
     # immediately unsubscribe; status endpoint should not stay attached.
     # attach() always returns a queue.
-    await run_supervisor.unsubscribe(run_id, queue)
+    await arc_runtime.unsubscribe(run_id, queue)
     if run_meta is None:
         raise HTTPException(status_code=404, detail="Run not found")
     return {
         "run": run_meta,
-        "supervisor": run_supervisor.status(),
+        "arc_runtime": arc_runtime.status(),
     }
 
 
@@ -820,7 +826,7 @@ async def attach_run_stream(run_id: str, req: AttachRunRequest):
     """Attach to an existing run stream with optional replay cursor."""
 
     async def stream_existing() -> AsyncGenerator[str, None]:
-        queue, run_meta = await run_supervisor.attach(
+        queue, run_meta = await arc_runtime.attach(
             run_id,
             last_event_id=req.last_event_id,
             last_seq=req.last_seq,
@@ -828,7 +834,7 @@ async def attach_run_stream(run_id: str, req: AttachRunRequest):
         if run_meta is None:
             yield _sse("error", {"error": "Run not found"})
             yield _sse("done", {})
-            await run_supervisor.unsubscribe(run_id, queue)
+            await arc_runtime.unsubscribe(run_id, queue)
             return
         try:
             yield _sse(
@@ -846,7 +852,7 @@ async def attach_run_stream(run_id: str, req: AttachRunRequest):
                     break
                 yield event
         finally:
-            await run_supervisor.unsubscribe(run_id, queue)
+            await arc_runtime.unsubscribe(run_id, queue)
 
     return StreamingResponse(
         stream_existing(),
@@ -1046,7 +1052,7 @@ async def ui_meta():
             "coverage": TELEMETRY_COVERAGE,
         },
         "runtime": get_runtime_status(),
-        "supervisor": run_supervisor.status(),
+        "arc_runtime": arc_runtime.status(),
     }
 
 
@@ -1057,6 +1063,62 @@ async def ui_health():
     return {
         "status": _health_level(snapshot),
         "snapshot": snapshot,
+    }
+
+
+@router.post("/ui/greeting")
+async def ui_greeting(req: GreetingRequest):
+    """Generate a natural welcome-back greeting from Arc using model context."""
+    runtime = arc_runtime.status()
+    recent_completed = runtime.get("recent_completed", [])[:3]
+    operator_name = (req.operator_name or "Shane").strip() or "Shane"
+    away_seconds = max(int(req.away_seconds or 0), 0)
+
+    context_payload = {
+        "operator_name": operator_name,
+        "away_seconds": away_seconds,
+        "cognition_enabled": runtime.get("cognition_enabled", False),
+        "active_run_count": runtime.get("active_run_count", 0),
+        "recent_completed": recent_completed,
+    }
+
+    default_greeting = (
+        f"Welcome back {operator_name}. I kept working while you were away."
+        if away_seconds >= 120
+        else f"Welcome back {operator_name}. I'm still here and ready."
+    )
+
+    try:
+        model = build_chat_model()
+        messages = [
+            SystemMessage(
+                content=(
+                    "You are Arc greeting your operator returning to the UI. "
+                    "Write one natural sentence, warm and human, no emojis. "
+                    "Vary tone based on time away. "
+                    "If recent completed work exists, briefly mention one concrete item. "
+                    "Keep under 24 words."
+                )
+            ),
+            HumanMessage(content=json.dumps(context_payload, default=str)),
+        ]
+        response = await asyncio.to_thread(model.invoke, messages)
+        content = getattr(response, "content", "")
+        if isinstance(content, list):
+            greeting = " ".join(str(part) for part in content if part).strip()
+        else:
+            greeting = str(content).strip()
+        if not greeting:
+            greeting = default_greeting
+    except Exception:
+        greeting = default_greeting
+
+    return {
+        "greeting": greeting,
+        "context": {
+            "away_seconds": away_seconds,
+            "recent_completed_count": len(recent_completed),
+        },
     }
 
 

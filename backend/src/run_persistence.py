@@ -321,3 +321,21 @@ class RunPersistence:
                 )
                 rows = cur.fetchall()
         return [dict(row) for row in rows]
+
+    def list_recent_completed(self, *, limit: int = 5) -> list[dict[str, Any]]:
+        if not self._enabled or not self._database_url:
+            return []
+        with psycopg.connect(self._database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT run_id, thread_id, message, status, completed_at, updated_at
+                    FROM arc_runs
+                    WHERE status = 'completed'
+                    ORDER BY COALESCE(completed_at, updated_at) DESC
+                    LIMIT %s;
+                    """,
+                    (max(limit, 1),),
+                )
+                rows = cur.fetchall()
+        return [dict(row) for row in rows]

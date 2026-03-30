@@ -37,7 +37,7 @@ else:
 
 from src.agent import arc_agent  # noqa: F401
 
-from src.run_supervisor import run_supervisor  # noqa: E402
+from src.arc_runtime import arc_runtime  # noqa: E402
 from src.routes import router  # noqa: E402
 
 app = FastAPI(
@@ -59,12 +59,12 @@ app.include_router(router)
 
 @app.on_event("startup")
 async def startup_runtime() -> None:
-    await run_supervisor.start()
+    await arc_runtime.start()
 
 
 @app.on_event("shutdown")
 async def shutdown_runtime() -> None:
-    await run_supervisor.stop()
+    await arc_runtime.stop()
 
 
 @app.get("/")

@@ -126,6 +126,27 @@ export interface UiMeta {
     };
     coverage: Record<string, string[]>;
   };
+  arc_runtime?: {
+    runtime_loop_running?: boolean;
+    cognition_enabled?: boolean;
+    cognition_loop_running?: boolean;
+    cognition_thread_id?: string;
+    cognition_interval_seconds?: number;
+    cognition_runs_started?: number;
+    cognition_last_run_at?: number | null;
+    persistence_enabled?: boolean;
+    active_run_count?: number;
+    active_run_ids?: string[];
+    recovered_run_count?: number;
+    recent_completed?: Array<{
+      run_id: string;
+      thread_id: string;
+      message: string;
+      status: string;
+      completed_at?: string | null;
+      updated_at?: string | null;
+    }>;
+  };
 }
 
 export interface RuntimeNotice {

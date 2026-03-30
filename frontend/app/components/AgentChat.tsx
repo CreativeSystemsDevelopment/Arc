@@ -34,6 +34,8 @@ const EMPTY_MESSAGES: ArcMessage[] = [];
 const EMPTY_TODOS: TodoItem[] = [];
 const MAX_RUNTIME_EVENTS = 400;
 const MAX_TIMELINE_EVENTS = 14;
+const LAST_SEEN_AT_KEY = "arc-last-seen-at";
+const LAST_GREETING_AT_KEY = "arc-last-greeting-at";
 
 function createThreadRecord(threadId?: string): ThreadRecord {
   const now = Date.now();
@@ -57,6 +59,20 @@ function deriveImportance(content: string, role: ArcMessage["role"]): number {
 function decayForMessage(content: string, role: ArcMessage["role"]): number {
   const importance = deriveImportance(content, role);
   return Date.now() + (importance > 0.55 ? 240_000 : 120_000);
+}
+
+function createGreetingMessage(content: string): ArcMessage {
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content,
+    toolCalls: [],
+    createdAt: now,
+    decayAt: now + 360_000,
+    pinned: false,
+    importance: deriveImportance(content, "assistant"),
+  };
 }
 
 function parseTodos(rawTodos: unknown): TodoItem[] {
@@ -196,6 +212,20 @@ export function AgentChat() {
     const initial = createThreadRecord();
     setThreads([initial]);
     setActiveThreadId(initial.id);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stampNow = () => {
+      window.localStorage.setItem(LAST_SEEN_AT_KEY, String(Date.now()));
+    };
+    window.addEventListener("beforeunload", stampNow);
+    document.addEventListener("visibilitychange", stampNow);
+    return () => {
+      stampNow();
+      window.removeEventListener("beforeunload", stampNow);
+      document.removeEventListener("visibilitychange", stampNow);
+    };
   }, []);
 
   useEffect(() => {
@@ -399,6 +429,50 @@ export function AgentChat() {
 
         if (healthResponse.ok) {
           setHealth((await healthResponse.json()) as HealthPayload);
+        }
+
+        if (typeof window !== "undefined") {
+          const now = Date.now();
+          const lastSeenRaw = window.localStorage.getItem(LAST_SEEN_AT_KEY);
+          const lastSeenAt = lastSeenRaw ? Number(lastSeenRaw) : null;
+          const awayMs = lastSeenAt && Number.isFinite(lastSeenAt) ? now - lastSeenAt : 0;
+          const awaySeconds = Math.max(0, Math.floor(awayMs / 1000));
+          const lastGreetingRaw = window.localStorage.getItem(LAST_GREETING_AT_KEY);
+          const lastGreetingAt = lastGreetingRaw ? Number(lastGreetingRaw) : 0;
+
+          // Only greet on meaningful return gaps and avoid repeated greetings
+          // from rapid refreshes/reconnects.
+          if (awaySeconds >= 120 && now - lastGreetingAt > 60_000) {
+            const greetingResponse = await fetch(`${backendBaseUrl}/ui/greeting`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                away_seconds: awaySeconds,
+                operator_name: "Shane",
+              }),
+            });
+
+            if (greetingResponse.ok) {
+              const payload = (await greetingResponse.json()) as {
+                greeting?: string;
+              };
+              const greeting = (payload.greeting ?? "").trim();
+              if (greeting) {
+                setThreads((current) =>
+                  current.map((thread) =>
+                    thread.id === activeThreadId
+                      ? {
+                          ...thread,
+                          updatedAt: Date.now(),
+                          messages: [...thread.messages, createGreetingMessage(greeting)],
+                        }
+                      : thread
+                  )
+                );
+                window.localStorage.setItem(LAST_GREETING_AT_KEY, String(now));
+              }
+            }
+          }
         }
       } catch {
         // keep UI operational even without metadata
