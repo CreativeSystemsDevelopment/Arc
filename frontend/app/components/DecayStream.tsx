@@ -53,8 +53,8 @@ export function DecayStream({
 }: DecayStreamProps) {
   const prefersReducedMotion = useReducedMotion();
 
-  // Limit to max visible messages for the stack effect
-  const visibleMessages = messages.slice(-Math.max(1, maxVisible));
+  // Messages are already pre-filtered/pre-limited upstream in AgentChat.
+  const visibleMessages = messages;
   const contentClass =
     fontSize === "small"
       ? "text-sm"
@@ -101,7 +101,8 @@ export function DecayStream({
         <AnimatePresence initial={false} mode="popLayout">
           {visibleMessages.map((message, index) => {
             const visuals = messageVisuals(message);
-            const isOldest = index === 0 && visibleMessages.length === Math.max(1, maxVisible);
+            const isOldest =
+              index === 0 && visibleMessages.length >= Math.max(1, maxVisible);
             const isNewest = index === visibleMessages.length - 1;
 
             // Fade oldest messages

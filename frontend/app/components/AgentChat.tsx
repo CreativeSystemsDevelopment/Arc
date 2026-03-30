@@ -16,7 +16,6 @@ import type {
   HealthPayload,
   OrbMode,
   OverlayKind,
-  PanelKind,
   RuntimeNotice,
   RuntimeEventEnvelope,
   SubagentEcho,
@@ -40,6 +39,16 @@ const UI_SETTINGS_KEY = "arc-ui-settings-v1";
 const AI_SETTINGS_KEY = "arc-ai-settings-v1";
 
 type ChatFontSize = "small" | "medium" | "large";
+type DockPanelId = "quick_prompts" | "plan" | "telemetry" | "tools";
+type DockSlot = "left" | "right" | "hidden";
+
+type PanelLayout = {
+  slots: Record<DockSlot, DockPanelId[]>;
+  active: {
+    left: DockPanelId;
+    right: DockPanelId;
+  };
+};
 
 type UiSettings = {
   reducedMotion: boolean;
@@ -54,6 +63,7 @@ type UiSettings = {
   showParticles: boolean;
   ambientLight: number;
   maxVisibleMessages: number;
+  panelLayout: PanelLayout;
 };
 
 type AiSettings = {
@@ -61,6 +71,9 @@ type AiSettings = {
   greetingMinAwaySeconds: number;
   greetingCooldownSeconds: number;
   operatorName: string;
+  greetingStyle: "adaptive" | "playful" | "professional" | "direct";
+  greetingIncludeRecentWork: boolean;
+  greetingMaxWords: number;
   autoFocusInput: boolean;
   smoothScroll: boolean;
 };
@@ -77,7 +90,18 @@ const DEFAULT_UI_SETTINGS: UiSettings = {
   showReflections: true,
   showParticles: true,
   ambientLight: 0.8,
-  maxVisibleMessages: 3,
+  maxVisibleMessages: MAX_VISIBLE_MESSAGES,
+  panelLayout: {
+    slots: {
+      left: ["quick_prompts", "plan"],
+      right: ["telemetry", "tools"],
+      hidden: [],
+    },
+    active: {
+      left: "quick_prompts",
+      right: "telemetry",
+    },
+  },
 };
 
 const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -85,9 +109,89 @@ const DEFAULT_AI_SETTINGS: AiSettings = {
   greetingMinAwaySeconds: 120,
   greetingCooldownSeconds: 60,
   operatorName: "Shane",
+  greetingStyle: "adaptive",
+  greetingIncludeRecentWork: true,
+  greetingMaxWords: 24,
   autoFocusInput: true,
   smoothScroll: true,
 };
+
+const DOCK_SLOT_ORDER: DockSlot[] = ["left", "right", "hidden"];
+const SLOT_LABEL: Record<DockSlot, string> = {
+  left: "Left dock",
+  right: "Right dock",
+  hidden: "Hidden",
+};
+
+const PANEL_LABEL: Record<DockPanelId, string> = {
+  quick_prompts: "Quick prompts",
+  plan: "Plan constellation",
+  telemetry: "Telemetry",
+  tools: "Tool filament",
+};
+
+const PANEL_ICON: Record<DockPanelId, string> = {
+  quick_prompts: "✦",
+  plan: "◈",
+  telemetry: "○",
+  tools: "⚡",
+};
+
+function sanitizePanelLayout(layout: PanelLayout | undefined): PanelLayout {
+  const allPanels: DockPanelId[] = ["quick_prompts", "plan", "telemetry", "tools"];
+  const normalizedSlots: Record<DockSlot, DockPanelId[]> = {
+    left: [],
+    right: [],
+    hidden: [],
+  };
+
+  if (layout) {
+    for (const slot of DOCK_SLOT_ORDER) {
+      const source = Array.isArray(layout.slots?.[slot]) ? layout.slots[slot] : [];
+      for (const panel of source) {
+        if (allPanels.includes(panel) && !normalizedSlots.left.includes(panel) && !normalizedSlots.right.includes(panel) && !normalizedSlots.hidden.includes(panel)) {
+          normalizedSlots[slot].push(panel);
+        }
+      }
+    }
+  }
+
+  for (const panel of allPanels) {
+    if (
+      !normalizedSlots.left.includes(panel) &&
+      !normalizedSlots.right.includes(panel) &&
+      !normalizedSlots.hidden.includes(panel)
+    ) {
+      normalizedSlots.hidden.push(panel);
+    }
+  }
+
+  if (normalizedSlots.left.length === 0) {
+    const fallback = normalizedSlots.hidden.shift();
+    if (fallback) normalizedSlots.left.push(fallback);
+  }
+  if (normalizedSlots.right.length === 0) {
+    const fallback = normalizedSlots.hidden.shift();
+    if (fallback) normalizedSlots.right.push(fallback);
+  }
+
+  const leftActive =
+    layout?.active?.left && normalizedSlots.left.includes(layout.active.left)
+      ? layout.active.left
+      : normalizedSlots.left[0];
+  const rightActive =
+    layout?.active?.right && normalizedSlots.right.includes(layout.active.right)
+      ? layout.active.right
+      : normalizedSlots.right[0];
+
+  return {
+    slots: normalizedSlots,
+    active: {
+      left: leftActive,
+      right: rightActive,
+    },
+  };
+}
 
 function createThreadRecord(threadId?: string): ThreadRecord {
   const now = Date.now();
@@ -226,6 +330,9 @@ export function AgentChat() {
   }
   const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI_SETTINGS);
   const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI_SETTINGS);
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const uiSettingsPersistReadyRef = useRef(false);
+  const aiSettingsPersistReadyRef = useRef(false);
 
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeThreadId, setActiveThreadId] = useState("");
@@ -235,7 +342,7 @@ export function AgentChat() {
   const [selectedFile, setSelectedFile] = useState<FilePreview | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(null);
-  const [panel, setPanel] = useState<PanelKind>("telemetry");
+  const [layoutDraft, setLayoutDraft] = useState<PanelLayout | null>(null);
   const [showUiSettings, setShowUiSettings] = useState(false);
   const [runtimeNotices, setRuntimeNotices] = useState<RuntimeNotice[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEventEnvelope[]>([]);
@@ -272,41 +379,75 @@ export function AgentChat() {
       const uiRaw = window.localStorage.getItem(UI_SETTINGS_KEY);
       if (uiRaw) {
         const parsed = JSON.parse(uiRaw) as Partial<UiSettings>;
-        setUiSettings((current) => ({ ...current, ...parsed }));
+        setUiSettings({
+          ...DEFAULT_UI_SETTINGS,
+          ...parsed,
+          panelLayout: sanitizePanelLayout(parsed.panelLayout as PanelLayout | undefined),
+        });
       }
       const aiRaw = window.localStorage.getItem(AI_SETTINGS_KEY);
       if (aiRaw) {
         const parsed = JSON.parse(aiRaw) as Partial<AiSettings>;
-        setAiSettings((current) => ({ ...current, ...parsed }));
+        setAiSettings({ ...DEFAULT_AI_SETTINGS, ...parsed });
       }
     } catch {
       // Keep defaults if storage is malformed.
+    } finally {
+      setSettingsHydrated(true);
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !settingsHydrated) return;
+    if (!uiSettingsPersistReadyRef.current) {
+      uiSettingsPersistReadyRef.current = true;
+      return;
+    }
     window.localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(uiSettings));
-  }, [uiSettings]);
+  }, [settingsHydrated, uiSettings]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !settingsHydrated) return;
+    if (!aiSettingsPersistReadyRef.current) {
+      aiSettingsPersistReadyRef.current = true;
+      return;
+    }
     window.localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(aiSettings));
-  }, [aiSettings]);
+  }, [aiSettings, settingsHydrated]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const sendPresence = (state: "connected" | "disconnected" | "hidden" | "visible", detail?: string) => {
+      fetch(`${backendBaseUrl}/ui/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state, source: "ui", detail }),
+        keepalive: true,
+      }).catch(() => {
+        // Non-blocking telemetry signal.
+      });
+    };
     const stampNow = () => {
       window.localStorage.setItem(LAST_SEEN_AT_KEY, String(Date.now()));
     };
-    window.addEventListener("beforeunload", stampNow);
-    document.addEventListener("visibilitychange", stampNow);
+    sendPresence("connected");
+    const onBeforeUnload = () => {
+      stampNow();
+      sendPresence("disconnected", "beforeunload");
+    };
+    const onVisibilityChange = () => {
+      stampNow();
+      sendPresence(document.visibilityState === "hidden" ? "hidden" : "visible");
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       stampNow();
-      window.removeEventListener("beforeunload", stampNow);
-      document.removeEventListener("visibilitychange", stampNow);
+      sendPresence("disconnected", "unmount");
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, []);
+  }, [backendBaseUrl]);
 
   useEffect(() => {
     if (threads.length === 0 || typeof window === "undefined") return;
@@ -340,6 +481,7 @@ export function AgentChat() {
     if (error) return "error";
     if (status === "planning" || status === "working") return "thinking";
     if (isStreaming) return "answering";
+    if (status === "done") return "paused";
     return "idle";
   }, [error, isStreaming, status]);
 
@@ -397,6 +539,84 @@ export function AgentChat() {
   const [rightMinimized, setRightMinimized] = useState(false);
   const [leftHovered, setLeftHovered] = useState(false);
   const [rightHovered, setRightHovered] = useState(false);
+
+  const leftPanels = uiSettings.panelLayout.slots.left;
+  const rightPanels = uiSettings.panelLayout.slots.right;
+  const leftActivePanel = leftPanels.includes(uiSettings.panelLayout.active.left)
+    ? uiSettings.panelLayout.active.left
+    : leftPanels[0] ?? "quick_prompts";
+  const rightActivePanel = rightPanels.includes(uiSettings.panelLayout.active.right)
+    ? uiSettings.panelLayout.active.right
+    : rightPanels[0] ?? "telemetry";
+
+  const setDockActivePanel = useCallback((slot: "left" | "right", panelId: DockPanelId) => {
+    setUiSettings((current) => {
+      if (!current.panelLayout.slots[slot].includes(panelId)) return current;
+      return {
+        ...current,
+        panelLayout: {
+          ...current.panelLayout,
+          active: {
+            ...current.panelLayout.active,
+            [slot]: panelId,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const activatePanelById = useCallback(
+    (panelId: DockPanelId): boolean => {
+      if (leftPanels.includes(panelId)) {
+        setDockActivePanel("left", panelId);
+        setLeftMinimized(false);
+        return true;
+      }
+      if (rightPanels.includes(panelId)) {
+        setDockActivePanel("right", panelId);
+        setRightMinimized(false);
+        return true;
+      }
+      return false;
+    },
+    [leftPanels, rightPanels, setDockActivePanel]
+  );
+
+  useEffect(() => {
+    if (!showUiSettings) return;
+    setLayoutDraft(JSON.parse(JSON.stringify(uiSettings.panelLayout)) as PanelLayout);
+  }, [showUiSettings, uiSettings.panelLayout]);
+
+  const moveDraftPanel = useCallback(
+    (panelId: DockPanelId, targetSlot: DockSlot) => {
+      setLayoutDraft((current) => {
+        const source = sanitizePanelLayout(current ?? uiSettings.panelLayout);
+        const next: PanelLayout = {
+          slots: {
+            left: source.slots.left.filter((id) => id !== panelId),
+            right: source.slots.right.filter((id) => id !== panelId),
+            hidden: source.slots.hidden.filter((id) => id !== panelId),
+          },
+          active: { ...source.active },
+        };
+        next.slots[targetSlot].push(panelId);
+        const sanitized = sanitizePanelLayout(next);
+        return sanitized;
+      });
+    },
+    [uiSettings.panelLayout]
+  );
+
+  const savePanelLayoutAndRefresh = useCallback(() => {
+    if (!layoutDraft) return;
+    const sanitized = sanitizePanelLayout(layoutDraft);
+    setUiSettings((current) => ({
+      ...current,
+      panelLayout: sanitized,
+    }));
+    setShowUiSettings(false);
+    window.setTimeout(() => window.location.reload(), 120);
+  }, [layoutDraft]);
 
   const connectionStatus = useMemo(() => {
     if (error) return "offline" as const;
@@ -457,7 +677,18 @@ export function AgentChat() {
     setRuntimeNotices([]);
     setSubagentEchoes([]);
     setOverlay(null);
-    setPanel("telemetry");
+    setUiSettings((current) => ({
+      ...current,
+      panelLayout: {
+        ...current.panelLayout,
+        active: {
+          ...current.panelLayout.active,
+          right: current.panelLayout.slots.right.includes("telemetry")
+            ? "telemetry"
+            : current.panelLayout.slots.right[0] ?? current.panelLayout.active.right,
+        },
+      },
+    }));
     return next.id;
   }, []);
 
@@ -521,33 +752,49 @@ export function AgentChat() {
               body: JSON.stringify({
                 away_seconds: awaySeconds,
                 operator_name: aiSettings.operatorName?.trim() || "Shane",
+                style_hint: aiSettings.greetingStyle,
+                include_recent_work: aiSettings.greetingIncludeRecentWork,
+                max_words: aiSettings.greetingMaxWords,
               }),
             });
 
-            if (greetingResponse.ok) {
-              const payload = (await greetingResponse.json()) as {
-                greeting?: string;
-              };
-              const greeting = (payload.greeting ?? "").trim();
-              if (greeting) {
-                setThreads((current) =>
-                  current.map((thread) =>
-                    thread.id === activeThreadId
-                      ? {
-                          ...thread,
-                          updatedAt: Date.now(),
-                          messages: [...thread.messages, createGreetingMessage(greeting)],
-                        }
-                      : thread
-                  )
-                );
-                window.localStorage.setItem(LAST_GREETING_AT_KEY, String(now));
-              }
+            if (!greetingResponse.ok) {
+              const failure = await greetingResponse.text();
+              throw new Error(
+                `Greeting request failed (${greetingResponse.status}): ${failure}`
+              );
             }
+
+            const payload = (await greetingResponse.json()) as {
+              greeting?: string | null;
+              decision?: string;
+            };
+            if (payload.decision === "silent" || payload.greeting == null) {
+              return;
+            }
+            const greeting = payload.greeting.trim();
+            if (!greeting) throw new Error("Greeting response was empty.");
+
+            setThreads((current) =>
+              current.map((thread) =>
+                thread.id === activeThreadId
+                  ? {
+                      ...thread,
+                      updatedAt: Date.now(),
+                      messages: [...thread.messages, createGreetingMessage(greeting)],
+                    }
+                  : thread
+              )
+            );
+            window.localStorage.setItem(LAST_GREETING_AT_KEY, String(now));
           }
         }
-      } catch {
-        // keep UI operational even without metadata
+      } catch (fetchError) {
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "UI bootstrap failed."
+        );
       }
     }
 
@@ -627,16 +874,24 @@ export function AgentChat() {
     async (command: string) => {
       switch (command) {
         case "/plan":
-          setPanel("plan");
-          appendNotice("Manifestation", "Plan constellation summoned");
+          if (activatePanelById("plan")) {
+            appendNotice("Manifestation", "Plan constellation summoned");
+          } else {
+            appendNotice("Panels", "Plan panel is hidden. Re-enable it in UI settings.");
+          }
           break;
         case "/tools":
-          setPanel("tools");
-          appendNotice("Manifestation", "Tool filament summoned");
+          if (activatePanelById("tools")) {
+            appendNotice("Manifestation", "Tool filament summoned");
+          } else {
+            appendNotice("Panels", "Tool panel is hidden. Re-enable it in UI settings.");
+          }
           break;
         case "/telemetry":
         case "/health":
-          setPanel("telemetry");
+          if (!activatePanelById("telemetry")) {
+            appendNotice("Panels", "Telemetry panel is hidden. Re-enable it in UI settings.");
+          }
           await fetchHealth();
           break;
         case "/files":
@@ -662,7 +917,7 @@ export function AgentChat() {
           appendNotice("Command", `No handler for ${command}`);
       }
     },
-    [appendNotice, contextUsage, fetchHealth, fetchWorkspace]
+    [activatePanelById, appendNotice, contextUsage, fetchHealth, fetchWorkspace]
   );
 
   const updateAssistantMessage = useCallback(
@@ -906,8 +1161,9 @@ export function AgentChat() {
   }, [missingSignalClasses]);
 
   const handleSubmit = useCallback(
-    async (value: string) => {
-      if (!value.trim() || isStreaming || !activeThread) return;
+    async (value: string, fileAttachments?: FileAttachment[]) => {
+      const hasContent = value.trim() || (fileAttachments && fileAttachments.length > 0);
+      if (!hasContent || isStreaming || !activeThread) return;
 
       const submittedValue = value.trim();
       if (submittedValue.startsWith("/")) {
@@ -954,6 +1210,21 @@ export function AgentChat() {
       appendNotice("Command", "Prompt fed into the Orb");
 
       try {
+        // Convert files to base64 for transmission (synchronous read)
+        const attachmentData = await Promise.all(
+          (fileAttachments || []).map(async (att) => {
+            const arrayBuffer = await att.file.arrayBuffer();
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            return {
+              name: att.name,
+              type: att.type,
+              size: att.size,
+              isImage: att.isImage,
+              data: base64,
+            };
+          })
+        );
+
         const response = await fetch(`${backendBaseUrl}/invoke/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -962,6 +1233,7 @@ export function AgentChat() {
             thread_id: activeThread.id,
             last_event_id: latestRuntimeCursor?.event_id ?? null,
             last_seq: latestRuntimeCursor?.seq ?? null,
+            attachments: attachmentData,
           }),
         });
 
@@ -1111,12 +1383,17 @@ export function AgentChat() {
             >
               <div className="w-[22rem] px-2 pt-2">
                 <AnimatePresence mode="wait">
-                  {panel === "plan" && (!leftMinimized || leftHovered) ? (
+                  {leftActivePanel === "plan" && (!leftMinimized || leftHovered) ? (
                     <PlanConstellation
                       key="plan-edge"
                       todos={todos}
                       visible={true}
-                      onClose={() => setPanel("telemetry")}
+                      onClose={() =>
+                        setDockActivePanel(
+                          "left",
+                          leftPanels.find((panelId) => panelId !== "plan") ?? "plan"
+                        )
+                      }
                     />
                   ) : leftMinimized && !leftHovered ? (
                     <motion.div
@@ -1127,21 +1404,80 @@ export function AgentChat() {
                       className="flex flex-col items-center gap-3 py-4"
                     >
                       <div className="h-12 w-1 rounded-full bg-gradient-to-b from-violet-400/40 to-transparent" />
-                      <div className="flex flex-col gap-2">
-                        {todos.length > 0 && (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-400/20 text-[10px] text-violet-200">
-                            {todos.filter((t) => t.status === "in_progress").length}
-                          </div>
-                        )}
-                      </div>
                       <div className="mt-4 flex flex-col gap-2">
+                        {leftPanels.map((panelId) => (
+                          <button
+                            key={panelId}
+                            onClick={() => setDockActivePanel("left", panelId)}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] ${
+                              leftActivePanel === panelId
+                                ? "border-violet-400/40 bg-violet-400/20 text-violet-200"
+                                : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                            }`}
+                            title={PANEL_LABEL[panelId]}
+                          >
+                            {PANEL_ICON[panelId]}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  ) : leftActivePanel === "telemetry" ? (
+                    <motion.div
+                      key="left-telemetry"
+                      initial={{ opacity: 0, x: -12, width: 0 }}
+                      animate={{ opacity: 1, x: 0, width: "22rem" }}
+                      exit={{ opacity: 0, x: -10, width: 0 }}
+                      className="w-[22rem]"
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/38">
+                          Telemetry
+                        </div>
                         <button
-                          onClick={() => setPanel("plan")}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                          onClick={() => setLeftMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
                         >
-                          ≡
+                          ←
                         </button>
                       </div>
+                      <TelemetryPanel
+                        identity={uiMeta?.identity ?? null}
+                        health={health}
+                        connectionStatus={connectionStatus}
+                        contextRatio={contextUsage / 100}
+                        isStreaming={isStreaming}
+                        runtimeNotices={runtimeNotices}
+                        runtimeEventCount={runtimeEvents.length}
+                        runtimeGapCount={runtimeGapCount}
+                        coverageMissingCount={coverageMissingCount}
+                        frameworkTimeline={frameworkTimeline}
+                        requiredSignalClasses={requiredSignalClasses}
+                        observedSignalClasses={observedSignalClassList}
+                        missingSignalClasses={missingSignalClasses}
+                        runtimeHeartbeatAgeMs={runtimeHeartbeatAgeMs}
+                        resumeAckCount={resumeAckCount}
+                      />
+                    </motion.div>
+                  ) : leftActivePanel === "tools" ? (
+                    <motion.div
+                      key="left-tools"
+                      initial={{ opacity: 0, x: -12, width: 0 }}
+                      animate={{ opacity: 1, x: 0, width: "22rem" }}
+                      exit={{ opacity: 0, x: -10, width: 0 }}
+                      className="w-[22rem]"
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/38">
+                          Tools
+                        </div>
+                        <button
+                          onClick={() => setLeftMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                        >
+                          ←
+                        </button>
+                      </div>
+                      <ToolFilament tools={toolCalls} />
                     </motion.div>
                   ) : (
                     <motion.aside
@@ -1153,7 +1489,7 @@ export function AgentChat() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/38">
-                          Quick prompts
+                          {PANEL_LABEL[leftActivePanel]}
                         </div>
                         <button
                           onClick={() => setLeftMinimized(true)}
@@ -1197,22 +1533,24 @@ export function AgentChat() {
                       className="flex h-full flex-col items-center gap-3 py-4"
                     >
                       <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => setPanel("telemetry")}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
-                        >
-                          ○
-                        </button>
-                        <button
-                          onClick={() => setPanel("tools")}
-                          className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] ${panel === "tools" ? "border-cyan-400/40 bg-cyan-400/20 text-cyan-200" : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10"}`}
-                        >
-                          ⚡
-                        </button>
+                        {rightPanels.map((panelId) => (
+                          <button
+                            key={panelId}
+                            onClick={() => setDockActivePanel("right", panelId)}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full border text-[10px] ${
+                              rightActivePanel === panelId
+                                ? "border-cyan-400/40 bg-cyan-400/20 text-cyan-200"
+                                : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10"
+                            }`}
+                            title={PANEL_LABEL[panelId]}
+                          >
+                            {PANEL_ICON[panelId]}
+                          </button>
+                        ))}
                       </div>
                       <div className="mt-auto h-12 w-1 rounded-full bg-gradient-to-t from-cyan-400/40 to-transparent" />
                     </motion.div>
-                  ) : panel === "tools" ? (
+                  ) : rightActivePanel === "tools" ? (
                     <motion.div
                       key="tools"
                       initial={{ opacity: 0, x: 12, width: 0 }}
@@ -1230,6 +1568,68 @@ export function AgentChat() {
                       </div>
                       <ToolFilament tools={toolCalls} />
                     </motion.div>
+                  ) : rightActivePanel === "plan" ? (
+                    <motion.div
+                      key="right-plan"
+                      initial={{ opacity: 0, x: 12, width: 0 }}
+                      animate={{ opacity: 1, x: 0, width: "23rem" }}
+                      exit={{ opacity: 0, x: 10, width: 0 }}
+                      className="w-[23rem]"
+                    >
+                      <div className="mb-2 flex items-center justify-end">
+                        <button
+                          onClick={() => setRightMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                        >
+                          →
+                        </button>
+                      </div>
+                      <PlanConstellation
+                        key="plan-right"
+                        todos={todos}
+                        visible={true}
+                        onClose={() =>
+                          setDockActivePanel(
+                            "right",
+                            rightPanels.find((panelId) => panelId !== "plan") ?? "plan"
+                          )
+                        }
+                      />
+                    </motion.div>
+                  ) : rightActivePanel === "quick_prompts" ? (
+                    <motion.aside
+                      key="right-prompts"
+                      initial={{ opacity: 0, x: 12, width: 0 }}
+                      animate={{ opacity: 1, x: 0, width: "23rem" }}
+                      exit={{ opacity: 0, x: 10, width: 0 }}
+                      className="w-[23rem] p-4"
+                    >
+                      <div className="mb-3 flex items-center justify-end">
+                        <button
+                          onClick={() => setRightMinimized(true)}
+                          className="rounded-full p-1 text-white/30 hover:bg-white/5 hover:text-white/60"
+                        >
+                          →
+                        </button>
+                      </div>
+                      <div className="rounded-[1rem] border border-white/8 bg-white/[0.03] p-3">
+                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/38">
+                          Quick prompts
+                        </div>
+                        <div className="mt-3 flex flex-col gap-2">
+                          {idleSuggestions.slice(0, 3).map((suggestion) => (
+                            <button
+                              key={`right-${suggestion}`}
+                              type="button"
+                              onClick={() => setInput(suggestion)}
+                              className="rounded-[0.9rem] border border-white/8 bg-white/[0.03] px-3 py-2 text-left text-xs text-white/66 transition hover:border-white/16 hover:bg-white/[0.06] hover:text-white/88"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.aside>
                   ) : (
                     <motion.div
                       key="telemetry"
@@ -1325,13 +1725,25 @@ export function AgentChat() {
                 <div ref={scrollAnchorRef} className="h-1" />
               </div>
 
-              {panel === "plan" && (
+              {(leftActivePanel === "plan" || rightActivePanel === "plan") && (
                 <div className="mt-3 xl:hidden">
                   <PlanConstellation
                     key="plan-mobile"
                     todos={todos}
                     visible={true}
-                    onClose={() => setPanel("telemetry")}
+                    onClose={() => {
+                      if (leftActivePanel === "plan") {
+                        setDockActivePanel(
+                          "left",
+                          leftPanels.find((panelId) => panelId !== "plan") ?? "plan"
+                        );
+                      } else if (rightActivePanel === "plan") {
+                        setDockActivePanel(
+                          "right",
+                          rightPanels.find((panelId) => panelId !== "plan") ?? "plan"
+                        );
+                      }
+                    }}
                   />
                 </div>
               )}
@@ -1438,6 +1850,20 @@ export function AgentChat() {
               {/* Settings Content */}
               <div className="h-full overflow-y-auto px-6 py-4 pb-24">
                 <div className="space-y-6">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      onClick={() => setUiSettings(DEFAULT_UI_SETTINGS)}
+                      className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 transition hover:border-white/25 hover:text-white"
+                    >
+                      Reset UI defaults
+                    </button>
+                    <button
+                      onClick={() => setAiSettings(DEFAULT_AI_SETTINGS)}
+                      className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 transition hover:border-white/25 hover:text-white"
+                    >
+                      Reset AI defaults
+                    </button>
+                  </div>
                   {/* Panels Section */}
                   <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.02] p-4">
                     <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
@@ -1726,6 +2152,32 @@ export function AgentChat() {
                           placeholder="Shane"
                         />
                       </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Greeting style</p>
+                          <p className="text-[11px] text-white/40">Tone preference for welcome-back message</p>
+                        </div>
+                        <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                          {(["adaptive", "playful", "professional", "direct"] as const).map((style) => (
+                            <button
+                              key={style}
+                              onClick={() =>
+                                setAiSettings((s) => ({
+                                  ...s,
+                                  greetingStyle: style,
+                                }))
+                              }
+                              className={`rounded px-2 py-1 text-[11px] capitalize transition ${
+                                aiSettings.greetingStyle === style
+                                  ? "bg-white/20 text-white"
+                                  : "text-white/50 hover:text-white/80"
+                              }`}
+                            >
+                              {style}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div>
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-white/80">Greeting minimum away time</p>
@@ -1765,6 +2217,48 @@ export function AgentChat() {
                             setAiSettings((s) => ({
                               ...s,
                               greetingCooldownSeconds: Number(e.target.value),
+                            }))
+                          }
+                          className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-white/80">Reference recent completed work</p>
+                          <p className="text-[11px] text-white/40">Mention concrete progress in greeting</p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              greetingIncludeRecentWork: !s.greetingIncludeRecentWork,
+                            }))
+                          }
+                          className={`h-6 w-11 rounded-full transition-colors ${aiSettings.greetingIncludeRecentWork ? "bg-violet-500" : "bg-white/20"}`}
+                        >
+                          <motion.div
+                            animate={{ x: aiSettings.greetingIncludeRecentWork ? 22 : 2 }}
+                            className="h-5 w-5 rounded-full bg-white shadow-sm"
+                          />
+                        </button>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white/80">Greeting max words</p>
+                          <span className="font-mono text-xs text-white/50">
+                            {aiSettings.greetingMaxWords}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="8"
+                          max="40"
+                          step="1"
+                          value={aiSettings.greetingMaxWords}
+                          onChange={(e) =>
+                            setAiSettings((s) => ({
+                              ...s,
+                              greetingMaxWords: Number(e.target.value),
                             }))
                           }
                           className="mt-2 h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-violet-500"

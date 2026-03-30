@@ -87,6 +87,15 @@ class AttachRunRequest(BaseModel):
 class GreetingRequest(BaseModel):
     away_seconds: int | None = None
     operator_name: str | None = "Shane"
+    style_hint: str | None = "adaptive"
+    include_recent_work: bool | None = True
+    max_words: int | None = 24
+
+
+class PresenceRequest(BaseModel):
+    state: str
+    source: str | None = "ui"
+    detail: str | None = None
 
 
 def _sse(event: str, data: Any, *, event_id: str | None = None) -> str:
@@ -1070,23 +1079,23 @@ async def ui_health():
 async def ui_greeting(req: GreetingRequest):
     """Generate a natural welcome-back greeting from Arc using model context."""
     runtime = arc_runtime.status()
-    recent_completed = runtime.get("recent_completed", [])[:3]
+    include_recent_work = bool(req.include_recent_work if req.include_recent_work is not None else True)
+    recent_completed = (runtime.get("recent_completed", [])[:3] if include_recent_work else [])
     operator_name = (req.operator_name or "Shane").strip() or "Shane"
     away_seconds = max(int(req.away_seconds or 0), 0)
+    style_hint = (req.style_hint or "adaptive").strip().lower()
+    max_words = max(8, min(int(req.max_words or 24), 40))
 
     context_payload = {
         "operator_name": operator_name,
         "away_seconds": away_seconds,
         "cognition_enabled": runtime.get("cognition_enabled", False),
         "active_run_count": runtime.get("active_run_count", 0),
+        "style_hint": style_hint,
+        "include_recent_work": include_recent_work,
+        "max_words": max_words,
         "recent_completed": recent_completed,
     }
-
-    default_greeting = (
-        f"Welcome back {operator_name}. I kept working while you were away."
-        if away_seconds >= 120
-        else f"Welcome back {operator_name}. I'm still here and ready."
-    )
 
     try:
         model = build_chat_model()
@@ -1094,10 +1103,12 @@ async def ui_greeting(req: GreetingRequest):
             SystemMessage(
                 content=(
                     "You are Arc greeting your operator returning to the UI. "
-                    "Write one natural sentence, warm and human, no emojis. "
+                    "You may decide not to greet. If you choose silence, respond with exactly '__NO_GREETING__'. "
+                    "If you greet, write one natural sentence, warm and human, no emojis. "
                     "Vary tone based on time away. "
-                    "If recent completed work exists, briefly mention one concrete item. "
-                    "Keep under 24 words."
+                    "Respect style_hint if provided: adaptive, playful, professional, or direct. "
+                    "If include_recent_work is true and recent completed work exists, briefly mention one concrete item. "
+                    f"Keep under {max_words} words."
                 )
             ),
             HumanMessage(content=json.dumps(context_payload, default=str)),
@@ -1108,10 +1119,22 @@ async def ui_greeting(req: GreetingRequest):
             greeting = " ".join(str(part) for part in content if part).strip()
         else:
             greeting = str(content).strip()
+        if greeting == "__NO_GREETING__":
+            return {
+                "greeting": None,
+                "decision": "silent",
+                "context": {
+                    "away_seconds": away_seconds,
+                    "recent_completed_count": len(recent_completed),
+                },
+            }
         if not greeting:
-            greeting = default_greeting
-    except Exception:
-        greeting = default_greeting
+            raise RuntimeError("Greeting model returned empty content")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Greeting generation failed: {exc}",
+        ) from exc
 
     return {
         "greeting": greeting,
@@ -1120,6 +1143,19 @@ async def ui_greeting(req: GreetingRequest):
             "recent_completed_count": len(recent_completed),
         },
     }
+
+
+@router.post("/ui/presence")
+async def ui_presence(req: PresenceRequest):
+    state = (req.state or "").strip().lower()
+    if state not in {"connected", "disconnected", "hidden", "visible"}:
+        raise HTTPException(status_code=400, detail="Invalid presence state")
+    arc_runtime.note_presence(
+        state=state,
+        source=(req.source or "ui").strip() or "ui",
+        detail=req.detail,
+    )
+    return {"ok": True, "state": state}
 
 
 @router.get("/ui/workspace")

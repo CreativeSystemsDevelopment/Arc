@@ -17,6 +17,7 @@ Environment:
 """
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -24,7 +25,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.model_factory import current_model_label
 
-load_dotenv()
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(dotenv_path=ENV_FILE, override=True)
 
 requested_mode = (os.environ.get("ARC_MODE") or "").strip().lower()
 if requested_mode and requested_mode not in {"unified", "admin", "local"}:

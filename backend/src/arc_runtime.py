@@ -48,6 +48,7 @@ class ArcRuntime:
         )
         self._cognition_last_run_at: float | None = None
         self._cognition_runs_started = 0
+        self._presence_events: deque[dict[str, Any]] = deque(maxlen=50)
 
     async def start(self) -> None:
         if self._runtime_task and not self._runtime_task.done():
@@ -277,6 +278,16 @@ class ArcRuntime:
                 # Default queue is unbounded; defensive guard retained.
                 pass
 
+    def note_presence(self, *, state: str, source: str = "ui", detail: str | None = None) -> None:
+        self._presence_events.append(
+            {
+                "ts": int(time() * 1000),
+                "state": state,
+                "source": source,
+                "detail": detail,
+            }
+        )
+
     def status(self) -> dict[str, Any]:
         active_runs = [
             run_id
@@ -307,6 +318,7 @@ class ArcRuntime:
             "active_run_ids": active_runs[:8],
             "recovered_run_count": self._recovered_run_count,
             "recent_completed": recent_completed,
+            "recent_presence": list(self._presence_events)[-8:],
         }
 
 
