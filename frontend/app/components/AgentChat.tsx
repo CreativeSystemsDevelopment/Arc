@@ -12,6 +12,7 @@ import { ToolFilament } from "./ToolFilament";
 import type {
   AgentStatus,
   ArcMessage,
+  FileAttachment,
   FilePreview,
   HealthPayload,
   OrbMode,
@@ -351,6 +352,7 @@ export function AgentChat() {
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
   const [resumeAckCount, setResumeAckCount] = useState(0);
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1770,12 +1772,15 @@ export function AgentChat() {
                   }
                   commands={uiMeta?.slash_commands ?? []}
                   setInput={setInput}
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
                   onExecuteCommand={(command) => {
                     void handleSlashCommand(command);
                   }}
-                  onSubmit={(event) => {
+                  onSubmit={(event, submitAttachments) => {
                     event.preventDefault();
-                    void handleSubmit(input);
+                    void handleSubmit(input, submitAttachments);
+                    setAttachments([]); // Clear after submit
                   }}
                 />
               </div>
@@ -1852,7 +1857,10 @@ export function AgentChat() {
                 <div className="space-y-6">
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <button
-                      onClick={() => setUiSettings(DEFAULT_UI_SETTINGS)}
+                      onClick={() => {
+                        setUiSettings(DEFAULT_UI_SETTINGS);
+                        setLayoutDraft(sanitizePanelLayout(DEFAULT_UI_SETTINGS.panelLayout));
+                      }}
                       className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 transition hover:border-white/25 hover:text-white"
                     >
                       Reset UI defaults
@@ -1877,11 +1885,180 @@ export function AgentChat() {
                     </h3>
                     <div className="space-y-4">
                       <div className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5">
-                        <p className="text-sm text-white/80">Panel transitions</p>
+                        <p className="text-sm text-white/80">Panel inventory</p>
                         <p className="mt-1 text-[11px] text-white/42">
-                          Panels only move when you explicitly toggle them.
+                          Choose which panels are visible and where they dock.
                         </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(Object.keys(PANEL_LABEL) as DockPanelId[]).map((panelId) => {
+                            const currentSlot =
+                              layoutDraft == null
+                                ? null
+                                : DOCK_SLOT_ORDER.find((slot) =>
+                                    layoutDraft.slots[slot].includes(panelId)
+                                  ) ?? null;
+                            return (
+                              <div
+                                key={`inventory-${panelId}`}
+                                className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-xs text-white/75"
+                              >
+                                <span>{PANEL_ICON[panelId]}</span>
+                                <span>{PANEL_LABEL[panelId]}</span>
+                                <span className="text-white/40">
+                                  {currentSlot ? `(${SLOT_LABEL[currentSlot]})` : ""}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {layoutDraft && (["left", "right"] as const).map((slot) => (
+                          <label key={`slot-${slot}`} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                            <div className="mb-2 text-[11px] uppercase tracking-[0.2em] text-white/45">
+                              Active in {SLOT_LABEL[slot]}
+                            </div>
+                            <select
+                              value={layoutDraft.active[slot]}
+                              onChange={(e) =>
+                                setLayoutDraft((current) => {
+                                  const source = sanitizePanelLayout(current ?? uiSettings.panelLayout);
+                                  const candidate = e.target.value as DockPanelId;
+                                  if (!source.slots[slot].includes(candidate)) return source;
+                                  return {
+                                    ...source,
+                                    active: {
+                                      ...source.active,
+                                      [slot]: candidate,
+                                    },
+                                  };
+                                })
+                              }
+                              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/85 outline-none focus:border-white/30"
+                            >
+                              {layoutDraft.slots[slot].map((panelId) => (
+                                <option key={`${slot}-${panelId}`} value={panelId}>
+                                  {PANEL_LABEL[panelId]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+
+                      <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-sm text-white/80">Wireframe layout (drag/drop)</p>
+                          <p className="text-[11px] text-white/45">
+                            Drag panels into Left, Right, or Hidden. Save applies + refreshes.
+                          </p>
+                        </div>
+                        {layoutDraft && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-[1fr_1.2fr_1fr] gap-2">
+                              {(["left", "right"] as const).map((slot, idx) => (
+                                <div
+                                  key={`wire-${slot}`}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    const panelId = e.dataTransfer.getData("text/panel-id") as DockPanelId;
+                                    if (!panelId) return;
+                                    moveDraftPanel(panelId, slot);
+                                  }}
+                                  className="min-h-[8.5rem] rounded-lg border border-dashed border-white/20 bg-white/[0.02] p-2"
+                                >
+                                  <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-white/45">
+                                    {idx === 0 ? "Left Dock" : "Right Dock"}
+                                  </div>
+                                  <div className="flex flex-col gap-1.5">
+                                    {layoutDraft.slots[slot].map((panelId) => (
+                                      <button
+                                        key={`wire-${slot}-${panelId}`}
+                                        draggable
+                                        onDragStart={(e) => e.dataTransfer.setData("text/panel-id", panelId)}
+                                        type="button"
+                                        className={`rounded-md border px-2 py-1 text-left text-xs transition ${
+                                          layoutDraft.active[slot] === panelId
+                                            ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-100"
+                                            : "border-white/12 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]"
+                                        }`}
+                                        onClick={() =>
+                                          setLayoutDraft((current) => {
+                                            const source = sanitizePanelLayout(current ?? uiSettings.panelLayout);
+                                            return {
+                                              ...source,
+                                              active: { ...source.active, [slot]: panelId },
+                                            };
+                                          })
+                                        }
+                                      >
+                                        <span className="mr-1.5">{PANEL_ICON[panelId]}</span>
+                                        {PANEL_LABEL[panelId]}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2">
+                                <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-white/45">
+                                  Main Chat (fixed)
+                                </div>
+                                <div className="h-[6.5rem] rounded-md border border-white/8 bg-black/20 p-2 text-xs text-white/55">
+                                  Conversation stream + command conduit
+                                </div>
+                              </div>
+                            </div>
+                            <div
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                const panelId = e.dataTransfer.getData("text/panel-id") as DockPanelId;
+                                if (!panelId) return;
+                                moveDraftPanel(panelId, "hidden");
+                              }}
+                              className="rounded-lg border border-dashed border-white/20 bg-white/[0.02] p-2"
+                            >
+                              <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-white/45">
+                                Hidden Panels
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {layoutDraft.slots.hidden.length === 0 && (
+                                  <span className="text-xs text-white/35">No hidden panels.</span>
+                                )}
+                                {layoutDraft.slots.hidden.map((panelId) => (
+                                  <button
+                                    key={`wire-hidden-${panelId}`}
+                                    draggable
+                                    onDragStart={(e) => e.dataTransfer.setData("text/panel-id", panelId)}
+                                    type="button"
+                                    className="rounded-md border border-white/12 bg-white/[0.04] px-2 py-1 text-xs text-white/75"
+                                  >
+                                    <span className="mr-1.5">{PANEL_ICON[panelId]}</span>
+                                    {PANEL_LABEL[panelId]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setLayoutDraft(sanitizePanelLayout(uiSettings.panelLayout))}
+                                className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-[11px] text-white/70 transition hover:border-white/25 hover:text-white"
+                              >
+                                Reset draft
+                              </button>
+                              <button
+                                type="button"
+                                onClick={savePanelLayoutAndRefresh}
+                                className="rounded-lg border border-cyan-300/30 bg-cyan-400/20 px-3 py-1.5 text-[11px] text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/30"
+                              >
+                                Save Layout & Refresh
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       <div>
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-white/80">Panel opacity</p>

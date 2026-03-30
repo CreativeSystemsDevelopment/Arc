@@ -99,6 +99,16 @@ export interface UiSettingItem {
   value: string;
 }
 
+export interface FileAttachment {
+  id: string;
+  file: File;
+  name: string;
+  type: string;
+  size: number;
+  previewUrl?: string; // for images
+  isImage: boolean;
+}
+
 export interface UiSettingSection {
   section: string;
   items: UiSettingItem[];
