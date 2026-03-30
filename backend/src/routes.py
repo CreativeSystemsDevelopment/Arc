@@ -14,6 +14,8 @@ Streams structured SSE events to the frontend:
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import json
 import traceback
 from collections.abc import AsyncGenerator, Iterable
@@ -22,14 +24,13 @@ from time import time
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from src.arc_runtime import ArcRunRequest, arc_runtime
 from src.agent import get_arc_agent, get_runtime_status
-from src.minimal_agent import current_minimal_model, minimal_agent
 from src.model_factory import build_chat_model, current_model_label
 from src.serialization import serialize_chunk
 from src.subagent_registry import registered_subagents
@@ -38,6 +39,7 @@ from src.tools.vm_health import vm_health_check
 router = APIRouter()
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+UPLOADED_DIR = WORKSPACE_ROOT / "uploaded"
 IGNORED_PATH_PARTS = {
     ".git",
     ".next",
@@ -72,11 +74,23 @@ TELEMETRY_COVERAGE = {
 }
 
 
+class Attachment(BaseModel):
+    name: str
+    type: str
+    size: int
+    is_image: bool
+    data: str  # base64 encoded
+
+
 class InvokeRequest(BaseModel):
     message: str
     thread_id: str = "default"
     last_event_id: str | None = None
     last_seq: int | None = None
+    attachments: list[Attachment] | None = None
+    uploaded_attachments: list[dict[str, Any]] | None = None
+    upload_failures: list[dict[str, Any]] | None = None
+    ui_context: dict[str, Any] | None = None
 
 
 class AttachRunRequest(BaseModel):
@@ -281,6 +295,29 @@ def _health_level(snapshot: dict[str, Any]) -> str:
     if cpu >= 70 or memory >= 75 or disk >= 82:
         return "warning"
     return "healthy"
+
+
+def _health_issues(snapshot: dict[str, Any]) -> list[str]:
+    issues = []
+    cpu = float(snapshot.get("cpu_percent", 0))
+    memory = float(snapshot.get("memory", {}).get("percent", 0))
+    disk = float(snapshot.get("disk", {}).get("percent_used", 0))
+    if cpu >= 90:
+        issues.append(f"CPU Critical ({cpu:.0f}%)")
+    elif cpu >= 70:
+        issues.append(f"CPU Warning ({cpu:.0f}%)")
+    
+    if memory >= 90:
+        issues.append(f"Memory Critical ({memory:.0f}%)")
+    elif memory >= 75:
+        issues.append(f"Memory Warning ({memory:.0f}%)")
+        
+    if disk >= 92:
+        issues.append(f"Disk Critical ({disk:.0f}%)")
+    elif disk >= 82:
+        issues.append(f"Disk Warning ({disk:.0f}%)")
+        
+    return issues
 
 
 def _extract_events(
@@ -760,22 +797,186 @@ async def stream_agent(
         yield event
 
 
-async def stream_minimal_agent(message: str, thread_id: str) -> AsyncGenerator[str, None]:
-    """Stream the standalone minimal Deep Agent."""
-    async for event in _stream_graph(minimal_agent, message, thread_id):
-        yield event
+def _format_attachments_for_agent(attachments: list[dict]) -> str:
+    """Format attachment info for inclusion in the agent's prompt."""
+    lines = ["[Uploaded Files]"]
+    for att in attachments:
+        if "error" in att:
+            lines.append(f"- {att['name']}: ERROR - {att['error']}")
+        else:
+            file_type = "image" if att.get("is_image") else "file"
+            lines.append(f"- {att['name']} ({file_type}, {att['size']} bytes)")
+            lines.append(f"  Path: {att['absolute_path']}")
+    lines.append("")
+    lines.append("These files are available in the /uploaded directory for processing.")
+    return "\n".join(lines)
+
+
+def _format_upload_failures_for_agent(failures: list[dict]) -> str:
+    """Format upload failures so Arc can react explicitly."""
+    lines = ["[Upload Failures]"]
+    for failure in failures:
+        name = str(failure.get("name", "unknown"))
+        error = str(failure.get("error", "unknown error"))
+        size = failure.get("size")
+        if isinstance(size, int):
+            lines.append(f"- {name} ({size} bytes): {error}")
+        else:
+            lines.append(f"- {name}: {error}")
+    lines.append("")
+    lines.append("These files were not uploaded successfully. Acknowledge and help recover.")
+    return "\n".join(lines)
+
+
+def _save_attachments(attachments: list[Attachment], thread_id: str) -> list[dict]:
+    """Save base64-encoded attachments to /uploaded directory."""
+    UPLOADED_DIR.mkdir(parents=True, exist_ok=True)
+    thread_upload_dir = UPLOADED_DIR / thread_id
+    thread_upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    saved = []
+    for attachment in attachments:
+        try:
+            # Decode base64 data
+            file_data = base64.b64decode(attachment.data)
+            
+            # Create file path
+            file_path = thread_upload_dir / attachment.name
+            
+            # Write file
+            with open(file_path, "wb") as f:
+                f.write(file_data)
+            
+            saved.append({
+                "name": attachment.name,
+                "type": attachment.type,
+                "size": attachment.size,
+                "is_image": attachment.is_image,
+                "path": str(file_path.relative_to(WORKSPACE_ROOT)),
+                "absolute_path": str(file_path),
+            })
+        except Exception as e:
+            saved.append({
+                "name": attachment.name,
+                "type": attachment.type,
+                "size": attachment.size,
+                "error": str(e),
+            })
+    
+    return saved
+
+
+async def _save_uploaded_file(file: UploadFile, thread_id: str) -> dict[str, Any]:
+    """Persist a multipart upload under /uploaded/<thread_id>."""
+    UPLOADED_DIR.mkdir(parents=True, exist_ok=True)
+    thread_upload_dir = UPLOADED_DIR / thread_id
+    thread_upload_dir.mkdir(parents=True, exist_ok=True)
+
+    original_name = (file.filename or "upload.bin").strip() or "upload.bin"
+    safe_name = Path(original_name).name
+    final_name = f"{uuid4().hex[:8]}_{safe_name}"
+    file_path = thread_upload_dir / final_name
+
+    total_size = 0
+    with open(file_path, "wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            out.write(chunk)
+            total_size += len(chunk)
+    await file.close()
+
+    content_type = file.content_type or "application/octet-stream"
+    return {
+        "name": safe_name,
+        "type": content_type,
+        "size": total_size,
+        "is_image": content_type.startswith("image/"),
+        "path": str(file_path.relative_to(WORKSPACE_ROOT)),
+        "absolute_path": str(file_path),
+    }
+
+
+@router.post("/attachments/upload")
+async def upload_attachment(
+    thread_id: str = Form(default="default"),
+    file: UploadFile = File(...),
+):
+    try:
+        saved = await _save_uploaded_file(file, thread_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Attachment upload failed: {exc}") from exc
+    return saved
+
+
+def _format_ui_context_for_agent(ui_context: dict[str, Any]) -> str:
+    """Format the UI context so Arc is aware of its telemetry."""
+    lines = ["[Current UI Telemetry]"]
+    
+    if "health" in ui_context and ui_context["health"]:
+        health = ui_context["health"]
+        status = health.get("status", "unknown")
+        lines.append(f"System Health: {status.upper()}")
+        
+        issues = health.get("issues", [])
+        if issues:
+            lines.append("Active Issues:")
+            for issue in issues:
+                lines.append(f"- {issue}")
+                
+        if "snapshot" in health:
+            snap = health["snapshot"]
+            cpu = snap.get("cpu_percent", 0)
+            mem = snap.get("memory", {}).get("percent", 0)
+            disk = snap.get("disk", {}).get("percent_used", 0)
+            lines.append(f"Metrics: CPU {cpu:.1f}%, RAM {mem:.1f}%, Disk {disk:.1f}%")
+
+    if "connectionStatus" in ui_context:
+        lines.append(f"UI Connection Status: {ui_context['connectionStatus']}")
+
+    if "uiMeta" in ui_context and ui_context["uiMeta"]:
+        meta = ui_context["uiMeta"]
+        if "arc_runtime" in meta:
+            rt = meta["arc_runtime"]
+            lines.append(f"Active Runs: {rt.get('active_run_count', 0)}")
+            faults = rt.get("bootstrap_fault_count", 0)
+            if faults > 0:
+                lines.append(f"System Faults Detected: {faults}")
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 @router.post("/invoke/stream")
 async def invoke_stream(req: InvokeRequest):
     """Stream the agent response as Server-Sent Events."""
     run_id = str(uuid4())
+    
+    # Process attachments if present
+    attachment_info = []
+    if req.attachments:
+        attachment_info = _save_attachments(req.attachments, req.thread_id)
+    if req.uploaded_attachments:
+        attachment_info.extend(req.uploaded_attachments)
 
     async def detached_stream() -> AsyncGenerator[str, None]:
+        # Include attachment info in the initial message if attachments were uploaded
+        message = req.message
+        if attachment_info:
+            attachment_context = _format_attachments_for_agent(attachment_info)
+            message = f"{message}\n\n{attachment_context}" if message else attachment_context
+        if req.upload_failures:
+            failure_context = _format_upload_failures_for_agent(req.upload_failures)
+            message = f"{message}\n\n{failure_context}" if message else failure_context
+        if req.ui_context:
+            ui_context_str = _format_ui_context_for_agent(req.ui_context)
+            message = f"{message}\n\n{ui_context_str}" if message else ui_context_str
+        
         queue = await arc_runtime.submit(
             ArcRunRequest(
                 run_id=run_id,
-                message=req.message,
+                message=message,
                 thread_id=req.thread_id,
                 last_event_id=req.last_event_id,
                 last_seq=req.last_seq,
@@ -794,19 +995,6 @@ async def invoke_stream(req: InvokeRequest):
 
     return StreamingResponse(
         detached_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.post("/debug/minimal/stream")
-async def invoke_minimal_stream(req: InvokeRequest):
-    """Stream a docs-aligned minimal Deep Agent for debugging."""
-    return StreamingResponse(
-        stream_minimal_agent(req.message, req.thread_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -871,17 +1059,6 @@ async def attach_run_stream(run_id: str, req: AttachRunRequest):
             "X-Accel-Buffering": "no",
         },
     )
-
-
-@router.get("/debug/minimal/meta")
-async def minimal_meta():
-    """Return minimal runtime metadata for the standalone debug UI."""
-    return {
-        "agent": "arc-minimal-debug",
-        "model": current_minimal_model(),
-        "transport": "sse",
-        "stream_path": "/debug/minimal/stream",
-    }
 
 
 @router.get("/health")
@@ -1071,6 +1248,7 @@ async def ui_health():
     snapshot = vm_health_check.invoke({})
     return {
         "status": _health_level(snapshot),
+        "issues": _health_issues(snapshot),
         "snapshot": snapshot,
     }
 

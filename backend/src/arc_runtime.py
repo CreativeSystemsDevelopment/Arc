@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import traceback
 from collections import deque
 from dataclasses import dataclass
 from time import time
@@ -49,32 +50,61 @@ class ArcRuntime:
         self._cognition_last_run_at: float | None = None
         self._cognition_runs_started = 0
         self._presence_events: deque[dict[str, Any]] = deque(maxlen=50)
+        self._bootstrap_faults: deque[dict[str, Any]] = deque(maxlen=50)
+        self._pending_bootstrap_faults: dict[str, dict[str, Any]] = {}
+        self._bootstrap_self_heal_attempts_by_signature: dict[str, int] = {}
+        self._bootstrap_self_healing_runs_started = 0
+        self._bootstrap_last_fault_at: float | None = None
+        self._bootstrap_drain_task: asyncio.Task[None] | None = None
+        self._self_healing_enabled = (
+            (os.environ.get("ARC_SELF_HEALING_ENABLED") or "true").strip().lower()
+            not in {"0", "false", "off", "no"}
+        )
+        self._self_healing_max_attempts = int(
+            (os.environ.get("ARC_SELF_HEALING_MAX_ATTEMPTS") or "1").strip()
+        )
+        self._self_healing_attempts_by_thread: dict[str, int] = {}
+        self._self_healing_runs_started = 0
+        self._self_healing_last_trigger_at: float | None = None
 
     async def start(self) -> None:
         if self._runtime_task and not self._runtime_task.done():
             return
         if self._persistence.enabled:
-            await asyncio.to_thread(self._persistence.setup)
-            recovered = await asyncio.to_thread(self._persistence.list_recoverable_runs)
-            for row in recovered:
-                run_id = str(row.get("run_id", "")).strip()
-                message = str(row.get("message", "")).strip()
-                thread_id = str(row.get("thread_id", "")).strip()
-                if not run_id or not message or not thread_id:
-                    continue
-                await self._queue.put(
-                    ArcRunRequest(
-                        run_id=run_id,
-                        message=message,
-                        thread_id=thread_id,
-                        last_event_id=row.get("last_event_id"),
-                        last_seq=row.get("last_seq"),
-                    )
+            try:
+                await asyncio.to_thread(self._persistence.setup)
+                recovered = await asyncio.to_thread(
+                    self._persistence.list_recoverable_runs
                 )
-                self._recovered_run_count += 1
+                for row in recovered:
+                    run_id = str(row.get("run_id", "")).strip()
+                    message = str(row.get("message", "")).strip()
+                    thread_id = str(row.get("thread_id", "")).strip()
+                    if not run_id or not message or not thread_id:
+                        continue
+                    await self._queue.put(
+                        ArcRunRequest(
+                            run_id=run_id,
+                            message=message,
+                            thread_id=thread_id,
+                            last_event_id=row.get("last_event_id"),
+                            last_seq=row.get("last_seq"),
+                        )
+                    )
+                    self._recovered_run_count += 1
+            except Exception as exc:
+                self.note_bootstrap_fault(
+                    source="persistence",
+                    stage="runtime_start",
+                    detail=f"Persistence initialization failed: {exc}",
+                    traceback_text=traceback.format_exc(),
+                    fatal=False,
+                )
+                self._persistence = RunPersistence(None)
         self._runtime_task = asyncio.create_task(self._runtime_loop())
         if self._cognition_enabled:
             self._cognition_task = asyncio.create_task(self._cognition_loop())
+        await self._drain_bootstrap_faults()
 
     async def stop(self) -> None:
         if self._cognition_task is not None:
@@ -245,6 +275,8 @@ class ArcRuntime:
                 await self._broadcast(request.run_id, event)
             if self._persistence.enabled:
                 await asyncio.to_thread(self._persistence.mark_completed, request.run_id)
+            # Successful run clears accumulated Self-Healing attempts for this thread.
+            self._self_healing_attempts_by_thread[request.thread_id] = 0
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             error_payload = json.dumps({"error": str(exc)})
             await self._broadcast(
@@ -256,10 +288,140 @@ class ArcRuntime:
                 await asyncio.to_thread(
                     self._persistence.mark_error, request.run_id, str(exc)
                 )
+            await self._maybe_trigger_self_healing(request, exc)
         finally:
             await self._broadcast(request.run_id, None)
             async with self._lock:
                 self._run_tasks.pop(request.run_id, None)
+
+    async def _maybe_trigger_self_healing(
+        self, failed_request: ArcRunRequest, error: Exception
+    ) -> None:
+        if not self._self_healing_enabled:
+            return
+        thread_id = failed_request.thread_id
+        attempts = self._self_healing_attempts_by_thread.get(thread_id, 0)
+        if attempts >= max(self._self_healing_max_attempts, 0):
+            return
+
+        attempt = attempts + 1
+        self._self_healing_attempts_by_thread[thread_id] = attempt
+        self._self_healing_runs_started += 1
+        self._self_healing_last_trigger_at = time()
+
+        error_text = str(error).strip() or "Unknown runtime exception"
+        self_healing_prompt = (
+            "Self-Healing triggered due to a run failure.\n"
+            f"Thread: {thread_id}\n"
+            f"Failed run id: {failed_request.run_id}\n"
+            f"Attempt: {attempt}/{max(self._self_healing_max_attempts, 0)}\n"
+            f"Observed error: {error_text}\n\n"
+            "Objectives:\n"
+            "1) Identify root cause from available context, logs, and code.\n"
+            "2) Apply the minimal corrective action.\n"
+            "3) Re-run or verify the failed behavior.\n"
+            "4) Write a reflection memory entry documenting the error and what fixed it.\n"
+            "5) Report concise user-facing outcome summary.\n"
+        )
+        await self._queue.put(
+            ArcRunRequest(
+                run_id=str(uuid4()),
+                message=self_healing_prompt,
+                thread_id=thread_id,
+                last_event_id=None,
+                last_seq=None,
+            )
+        )
+
+    def note_bootstrap_fault(
+        self,
+        *,
+        source: str,
+        stage: str,
+        detail: str,
+        traceback_text: str | None = None,
+        fatal: bool = False,
+    ) -> dict[str, Any]:
+        signature = f"{source}|{stage}|{detail.strip().splitlines()[0][:240]}"
+        event = {
+            "id": str(uuid4()),
+            "ts": int(time() * 1000),
+            "source": source,
+            "stage": stage,
+            "detail": detail.strip() or "Unknown bootstrap fault",
+            "traceback": (traceback_text or "").strip() or None,
+            "fatal": fatal,
+            "signature": signature,
+            "self_healing_status": "pending",
+        }
+        self._bootstrap_faults.append(event)
+        self._bootstrap_last_fault_at = time()
+        self._pending_bootstrap_faults[signature] = event
+        self._schedule_bootstrap_drain()
+        return event
+
+    def _schedule_bootstrap_drain(self) -> None:
+        if not self._runtime_task or self._runtime_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._bootstrap_drain_task and not self._bootstrap_drain_task.done():
+            return
+        self._bootstrap_drain_task = loop.create_task(self._drain_bootstrap_faults())
+
+    async def _drain_bootstrap_faults(self) -> None:
+        while self._pending_bootstrap_faults:
+            pending = list(self._pending_bootstrap_faults.items())
+            self._pending_bootstrap_faults.clear()
+            for signature, event in pending:
+                await self._maybe_trigger_bootstrap_self_healing(signature, event)
+
+    async def _maybe_trigger_bootstrap_self_healing(
+        self, signature: str, event: dict[str, Any]
+    ) -> None:
+        if not self._self_healing_enabled:
+            event["self_healing_status"] = "disabled"
+            return
+        attempts = self._bootstrap_self_heal_attempts_by_signature.get(signature, 0)
+        if attempts >= max(self._self_healing_max_attempts, 0):
+            event["self_healing_status"] = "exhausted"
+            return
+
+        attempt = attempts + 1
+        self._bootstrap_self_heal_attempts_by_signature[signature] = attempt
+        self._bootstrap_self_healing_runs_started += 1
+        self._self_healing_runs_started += 1
+        self._self_healing_last_trigger_at = time()
+        event["self_healing_status"] = "queued"
+        event["self_healing_attempt"] = attempt
+
+        prompt = (
+            "Self-Healing triggered due to a bootstrap/process fault.\n"
+            f"Source: {event.get('source')}\n"
+            f"Stage: {event.get('stage')}\n"
+            f"Fatal: {bool(event.get('fatal'))}\n"
+            f"Attempt: {attempt}/{max(self._self_healing_max_attempts, 0)}\n"
+            f"Observed error: {event.get('detail')}\n\n"
+            "Traceback:\n"
+            f"{event.get('traceback') or 'No traceback captured.'}\n\n"
+            "Objectives:\n"
+            "1) Diagnose the root cause of this startup/process fault.\n"
+            "2) Repair it if possible using the available tools.\n"
+            "3) Verify the affected startup/runtime path.\n"
+            "4) Write a reflection memory entry with the failure and resolution.\n"
+            "5) Report concise operator-facing status.\n"
+        )
+        await self._queue.put(
+            ArcRunRequest(
+                run_id=str(uuid4()),
+                message=prompt,
+                thread_id="bootstrap-watchdog",
+                last_event_id=None,
+                last_seq=None,
+            )
+        )
 
     async def _broadcast(self, run_id: str, event: str | None) -> None:
         if event is not None and self._persistence.enabled:
@@ -319,6 +481,15 @@ class ArcRuntime:
             "recovered_run_count": self._recovered_run_count,
             "recent_completed": recent_completed,
             "recent_presence": list(self._presence_events)[-8:],
+            "bootstrap_fault_count": len(self._bootstrap_faults),
+            "bootstrap_pending_fault_count": len(self._pending_bootstrap_faults),
+            "bootstrap_last_fault_at": self._bootstrap_last_fault_at,
+            "recent_bootstrap_faults": list(self._bootstrap_faults)[-8:],
+            "bootstrap_self_healing_runs_started": self._bootstrap_self_healing_runs_started,
+            "self_healing_enabled": self._self_healing_enabled,
+            "self_healing_max_attempts": self._self_healing_max_attempts,
+            "self_healing_runs_started": self._self_healing_runs_started,
+            "self_healing_last_trigger_at": self._self_healing_last_trigger_at,
         }
 
 

@@ -109,6 +109,30 @@ export interface FileAttachment {
   isImage: boolean;
 }
 
+export type AttachmentUploadStatus =
+  | "queued"
+  | "uploading"
+  | "uploaded"
+  | "error"
+  | "canceled";
+
+export interface UploadedAttachmentRef {
+  name: string;
+  type: string;
+  size: number;
+  is_image: boolean;
+  path: string;
+  absolute_path: string;
+}
+
+export interface AttachmentUploadState {
+  status: AttachmentUploadStatus;
+  progress: number;
+  retryCount?: number;
+  error?: string;
+  uploaded?: UploadedAttachmentRef;
+}
+
 export interface UiSettingSection {
   section: string;
   items: UiSettingItem[];
@@ -156,6 +180,20 @@ export interface UiMeta {
       completed_at?: string | null;
       updated_at?: string | null;
     }>;
+    bootstrap_fault_count?: number;
+    bootstrap_pending_fault_count?: number;
+    bootstrap_last_fault_at?: number | null;
+    recent_bootstrap_faults?: Array<{
+      id: string;
+      ts: number;
+      source: string;
+      stage: string;
+      detail: string;
+      fatal: boolean;
+      self_healing_status: string;
+      self_healing_attempt?: number;
+    }>;
+    bootstrap_self_healing_runs_started?: number;
   };
 }
 
@@ -205,6 +243,7 @@ export interface HealthSnapshot {
 
 export interface HealthPayload {
   status: "healthy" | "warning" | "critical";
+  issues?: string[];
   snapshot: HealthSnapshot;
 }
 

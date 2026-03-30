@@ -3,7 +3,11 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { forwardRef, useState, useCallback } from "react";
 
-import type { UiSlashCommand, FileAttachment } from "./types";
+import type {
+  UiSlashCommand,
+  FileAttachment,
+  AttachmentUploadState,
+} from "./types";
 
 interface CommandConduitProps {
   input: string;
@@ -17,6 +21,8 @@ interface CommandConduitProps {
   toggleAudio: () => void;
   commands: UiSlashCommand[];
   attachments?: FileAttachment[];
+  attachmentUploads?: Record<string, AttachmentUploadState>;
+  onCancelAttachmentUpload?: (attachmentId: string) => void;
   onAttachmentsChange?: (attachments: FileAttachment[]) => void;
 }
 
@@ -34,6 +40,8 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
       toggleAudio,
       commands,
       attachments = [],
+      attachmentUploads = {},
+      onCancelAttachmentUpload,
       onAttachmentsChange,
     },
     ref
@@ -132,14 +140,51 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
 
     const handleSubmitWithAttachments = (event: React.FormEvent) => {
       onSubmit(event, attachments);
-      // Clear attachments after submit
-      if (onAttachmentsChange) {
-        attachments.forEach(a => {
-          if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-        });
-        onAttachmentsChange([]);
-      }
     };
+
+    const progressLabel = (state: AttachmentUploadState | undefined): string => {
+      if (!state) return "queued";
+      if (state.status === "uploading") {
+        const retrySuffix = (state.retryCount ?? 0) > 0 ? " (retry)" : "";
+        return `uploading ${state.progress}%${retrySuffix}`;
+      }
+      if (state.status === "uploaded") return "uploaded";
+      if (state.status === "error") return "failed";
+      if (state.status === "canceled") return "canceled";
+      return "queued";
+    };
+
+    const uploadSummary = (() => {
+      const states = attachments.map((attachment) => attachmentUploads[attachment.id]);
+      const uploading = states.filter((state) => state?.status === "uploading").length;
+      const queued = states.filter(
+        (state) => !state || state.status === "queued"
+      ).length;
+      const uploaded = states.filter((state) => state?.status === "uploaded").length;
+      const failed = states.filter((state) => state?.status === "error").length;
+      const canceled = states.filter((state) => state?.status === "canceled").length;
+      return { uploading, queued, uploaded, failed, canceled };
+    })();
+
+    const activityItems: string[] = [];
+    if (isStreaming) {
+      activityItems.push("Run active - send to interrupt");
+    }
+    if (uploadSummary.uploading > 0) {
+      activityItems.push(`${uploadSummary.uploading} uploading`);
+    }
+    if (uploadSummary.queued > 0) {
+      activityItems.push(`${uploadSummary.queued} queued`);
+    }
+    if (uploadSummary.failed > 0) {
+      activityItems.push(`${uploadSummary.failed} failed`);
+    }
+    if (uploadSummary.canceled > 0) {
+      activityItems.push(`${uploadSummary.canceled} canceled`);
+    }
+    if (uploadSummary.uploaded > 0) {
+      activityItems.push(`${uploadSummary.uploaded} ready`);
+    }
 
     return (
       <div className="pointer-events-auto w-full">
@@ -216,10 +261,9 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                       event.currentTarget.form?.requestSubmit();
                     }
                   }}
-                  disabled={isStreaming}
                   rows={1}
                   placeholder="Message Arc..."
-                  className="max-h-40 min-h-[52px] w-full resize-none bg-transparent text-[15px] leading-7 text-white placeholder:text-white/34 focus:outline-none disabled:opacity-60"
+                  className="max-h-40 min-h-[52px] w-full resize-none bg-transparent text-[15px] leading-7 text-white placeholder:text-white/34 focus:outline-none"
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/36">
                   <span>Enter to send</span>
@@ -230,12 +274,16 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
 
               <motion.button
                 type="submit"
-                disabled={isStreaming || (!input.trim() && attachments.length === 0)}
+                disabled={!input.trim() && attachments.length === 0}
                 whileHover={reducedMotion ? undefined : { scale: 1.02 }}
                 whileTap={reducedMotion ? undefined : { scale: 0.97 }}
                 className="inline-flex h-12 shrink-0 items-center justify-center rounded-full border border-white/14 bg-white/[0.06] px-6 text-[11px] uppercase tracking-[0.28em] text-white transition hover:border-white/24 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"
               >
-                {isStreaming ? "Working" : attachments.length > 0 ? `Send ${attachments.length}` : "Send"}
+                {isStreaming
+                  ? "Interrupt + Send"
+                  : attachments.length > 0
+                    ? `Send ${attachments.length}`
+                    : "Send"}
               </motion.button>
             </div>
 
@@ -249,7 +297,9 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                   transition={{ duration: reducedMotion ? 0.1 : 0.2 }}
                   className="mt-3 flex flex-wrap gap-2 border-t border-white/8 pt-3"
                 >
-                  {attachments.map((attachment) => (
+                  {attachments.map((attachment) => {
+                    const uploadState = attachmentUploads[attachment.id];
+                    return (
                     <motion.div
                       key={attachment.id}
                       layout
@@ -288,21 +338,80 @@ export const CommandConduit = forwardRef<HTMLTextAreaElement, CommandConduitProp
                         <span className="text-[10px] text-white/40">
                           {formatFileSize(attachment.size)}
                         </span>
+                        <span className="text-[10px] text-white/50">
+                          {progressLabel(uploadState)}
+                        </span>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              uploadState?.status === "uploaded"
+                                ? "bg-emerald-300/80"
+                                : uploadState?.status === "error"
+                                  ? "bg-rose-300/80"
+                                  : "bg-cyan-300/80"
+                            }`}
+                            style={{
+                              width: `${Math.max(
+                                4,
+                                uploadState?.status === "uploaded"
+                                  ? 100
+                                  : uploadState?.progress ?? 0
+                              )}%`,
+                            }}
+                          />
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(attachment.id)}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white/80"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
+                      <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                        {(uploadState?.status === "queued" ||
+                          uploadState?.status === "uploading") && (
+                          <button
+                            type="button"
+                            onClick={() => onCancelAttachmentUpload?.(attachment.id)}
+                            className="rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white/80"
+                            title="Cancel upload"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <rect x="7" y="7" width="10" height="10" />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(attachment.id)}
+                          className="rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white/80"
+                          title="Remove attachment"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/8 pt-3">
+              <span className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.22em] text-white/56">
+                Input Activity
+              </span>
+              {activityItems.length > 0 ? (
+                activityItems.map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/62"
+                  >
+                    {item}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[10px] text-white/42">
+                  idle - ready for message or files
+                </span>
+              )}
+            </div>
           </form>
 
           <AnimatePresence>

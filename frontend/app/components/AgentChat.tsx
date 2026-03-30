@@ -11,6 +11,7 @@ import { TelemetryPanel } from "./TelemetryPanel";
 import { ToolFilament } from "./ToolFilament";
 import type {
   AgentStatus,
+  AttachmentUploadState,
   ArcMessage,
   FileAttachment,
   FilePreview,
@@ -24,6 +25,7 @@ import type {
   TodoItem,
   ToolCall,
   UiMeta,
+  UploadedAttachmentRef,
   WorkspacePayload,
 } from "./types";
 
@@ -77,6 +79,11 @@ type AiSettings = {
   greetingMaxWords: number;
   autoFocusInput: boolean;
   smoothScroll: boolean;
+};
+
+type ActiveStream = {
+  requestId: string;
+  controller: AbortController;
 };
 
 const DEFAULT_UI_SETTINGS: UiSettings = {
@@ -353,6 +360,9 @@ export function AgentChat() {
   const [resumeAckCount, setResumeAckCount] = useState(0);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [attachmentUploads, setAttachmentUploads] = useState<
+    Record<string, AttachmentUploadState>
+  >({});
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -360,6 +370,8 @@ export function AgentChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const lastSeqByRunRef = useRef<Map<string, number>>(new Map());
+  const uploadXhrsRef = useRef<Map<string, XMLHttpRequest>>(new Map());
+  const activeStreamRef = useRef<ActiveStream | null>(null);
   const reducedMotion = Boolean(prefersReducedMotion) || uiSettings.reducedMotion;
 
   useEffect(() => {
@@ -488,9 +500,8 @@ export function AgentChat() {
   }, [error, isStreaming, status]);
 
   const visibleMessages = useMemo(() => {
-    return messages
-      .filter((message) => message.pinned || message.decayAt > Date.now())
-      .slice(-Math.max(1, uiSettings.maxVisibleMessages));
+    // Show all messages (decay filter removed for persistent conversation history)
+    return messages.slice(-Math.max(1, uiSettings.maxVisibleMessages));
   }, [messages, uiSettings.maxVisibleMessages]);
 
   const toolCalls = useMemo(() => {
@@ -616,8 +627,9 @@ export function AgentChat() {
       ...current,
       panelLayout: sanitized,
     }));
+    setLayoutDraft(null);
     setShowUiSettings(false);
-    window.setTimeout(() => window.location.reload(), 120);
+    // Apply layout immediately in-memory; persistence effect will store it.
   }, [layoutDraft]);
 
   const connectionStatus = useMemo(() => {
@@ -696,21 +708,7 @@ export function AgentChat() {
 
   useEffect(() => {
     if (!activeThreadId) return;
-    const interval = window.setInterval(() => {
-      setThreads((current) =>
-        current.map((thread) => {
-          if (thread.id !== activeThreadId) return thread;
-          const now = Date.now();
-          const filtered = thread.messages.filter(
-            (message) => message.pinned || message.decayAt > now
-          );
-          if (filtered.length === thread.messages.length) return thread;
-          return { ...thread, messages: filtered };
-        })
-      );
-    }, 4000);
-
-    return () => window.clearInterval(interval);
+    // Message decay disabled - conversations persist indefinitely
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -1162,16 +1160,235 @@ export function AgentChat() {
     setCoverageMissingCount(missingSignalClasses.length);
   }, [missingSignalClasses]);
 
+  const cancelAttachmentUpload = useCallback((attachmentId: string) => {
+    const xhr = uploadXhrsRef.current.get(attachmentId);
+    if (xhr) {
+      xhr.abort();
+      uploadXhrsRef.current.delete(attachmentId);
+    }
+    setAttachmentUploads((current) => ({
+      ...current,
+      [attachmentId]: {
+        ...(current[attachmentId] ?? { progress: 0 }),
+        status: "canceled",
+      },
+    }));
+  }, []);
+
+  const injectUploadFailure = useCallback(
+    (threadId: string, attachment: FileAttachment, reason: string) => {
+      const now = Date.now();
+      const summary = `Upload failed: ${attachment.name} (${reason})`;
+      updateThread(threadId, (thread) => ({
+        ...thread,
+        updatedAt: now,
+        messages: [
+          ...thread.messages,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: summary,
+            toolCalls: [],
+            createdAt: now,
+            decayAt: now + 360_000,
+            pinned: true,
+            importance: deriveImportance(summary, "assistant"),
+          },
+        ],
+      }));
+      appendNotice("Upload", summary);
+    },
+    [appendNotice, updateThread]
+  );
+
+  const startAttachmentUpload = useCallback(
+    (attachment: FileAttachment, threadId: string, attempt = 0) => {
+      setAttachmentUploads((current) => {
+        const existing = current[attachment.id];
+        if (
+          existing &&
+          (existing.status === "uploading" || existing.status === "uploaded")
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          [attachment.id]: {
+            status: "queued",
+            progress: existing?.progress ?? 0,
+            retryCount: attempt,
+            error: undefined,
+            uploaded: existing?.uploaded,
+          },
+        };
+      });
+
+      const xhr = new XMLHttpRequest();
+      uploadXhrsRef.current.set(attachment.id, xhr);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const nextProgress = Math.max(
+          1,
+          Math.min(99, Math.round((event.loaded / event.total) * 100))
+        );
+        setAttachmentUploads((current) => ({
+          ...current,
+          [attachment.id]: {
+            ...(current[attachment.id] ?? { status: "uploading", progress: 0 }),
+            status: "uploading",
+            progress: nextProgress,
+            retryCount: attempt,
+            error: undefined,
+          },
+        }));
+      };
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState !== XMLHttpRequest.DONE) return;
+        uploadXhrsRef.current.delete(attachment.id);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const parsed = JSON.parse(xhr.responseText) as UploadedAttachmentRef;
+            setAttachmentUploads((current) => ({
+              ...current,
+              [attachment.id]: {
+                status: "uploaded",
+                progress: 100,
+                retryCount: attempt,
+                uploaded: parsed,
+              },
+            }));
+            return;
+          } catch {
+            // fallthrough
+          }
+        }
+        const detail =
+          xhr.status === 0
+            ? "Upload canceled"
+            : `Upload failed (${xhr.status || "unknown"})`;
+        if (xhr.status !== 0 && attempt < 1) {
+          setAttachmentUploads((current) => ({
+            ...current,
+            [attachment.id]: {
+              ...(current[attachment.id] ?? { progress: 0 }),
+              status: "queued",
+              progress: 0,
+              retryCount: attempt + 1,
+              error: "retrying once...",
+            },
+          }));
+          window.setTimeout(() => {
+            startAttachmentUpload(attachment, threadId, attempt + 1);
+          }, 250);
+          return;
+        }
+        setAttachmentUploads((current) => ({
+          ...current,
+          [attachment.id]: {
+            ...(current[attachment.id] ?? { progress: 0 }),
+            status: xhr.status === 0 ? "canceled" : "error",
+            retryCount: attempt,
+            error: detail,
+          },
+        }));
+        if (xhr.status !== 0) {
+          injectUploadFailure(threadId, attachment, detail);
+        }
+      };
+
+      const form = new FormData();
+      form.append("thread_id", threadId);
+      form.append("file", attachment.file, attachment.name);
+      xhr.open("POST", `${backendBaseUrl}/attachments/upload`, true);
+      xhr.send(form);
+    },
+    [backendBaseUrl, injectUploadFailure]
+  );
+
+  useEffect(() => {
+    if (!activeThread) return;
+    for (const attachment of attachments) {
+      const state = attachmentUploads[attachment.id];
+      if (!state) {
+        startAttachmentUpload(attachment, activeThread.id);
+      }
+    }
+  }, [activeThread, attachmentUploads, attachments, startAttachmentUpload]);
+
+  useEffect(() => {
+    const activeIds = new Set(attachments.map((attachment) => attachment.id));
+    for (const [attachmentId, xhr] of uploadXhrsRef.current.entries()) {
+      if (!activeIds.has(attachmentId)) {
+        xhr.abort();
+        uploadXhrsRef.current.delete(attachmentId);
+      }
+    }
+    setAttachmentUploads((current) => {
+      let changed = false;
+      const next: Record<string, AttachmentUploadState> = {};
+      for (const [attachmentId, state] of Object.entries(current)) {
+        if (activeIds.has(attachmentId)) {
+          next[attachmentId] = state;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [attachments]);
+
+  useEffect(() => {
+    const uploadXhrs = uploadXhrsRef.current;
+    const activeStream = activeStreamRef.current;
+    return () => {
+      for (const xhr of uploadXhrs.values()) {
+        xhr.abort();
+      }
+      uploadXhrs.clear();
+      if (activeStream) {
+        activeStream.controller.abort();
+        activeStreamRef.current = null;
+      }
+    };
+  }, []);
+
   const handleSubmit = useCallback(
     async (value: string, fileAttachments?: FileAttachment[]) => {
       const hasContent = value.trim() || (fileAttachments && fileAttachments.length > 0);
-      if (!hasContent || isStreaming || !activeThread) return;
+      if (!hasContent || !activeThread) return;
 
       const submittedValue = value.trim();
       if (submittedValue.startsWith("/")) {
         const command = submittedValue.split(/\s+/)[0]?.toLowerCase() ?? submittedValue;
         setInput("");
         await handleSlashCommand(command);
+        return;
+      }
+      const queuedAttachments = fileAttachments || [];
+      const uploadedAttachmentRefs: UploadedAttachmentRef[] = [];
+      const uploadFailures: Array<{ name: string; size: number; error: string }> = [];
+      let pendingUploads = 0;
+      for (const attachment of queuedAttachments) {
+        const state = attachmentUploads[attachment.id];
+        if (state?.status === "uploaded" && state.uploaded) {
+          uploadedAttachmentRefs.push(state.uploaded);
+        } else if (state?.status === "error") {
+          uploadFailures.push({
+            name: attachment.name,
+            size: attachment.size,
+            error: state.error || "upload failed",
+          });
+        } else {
+          pendingUploads += 1;
+        }
+      }
+      if (!submittedValue && uploadedAttachmentRefs.length === 0 && pendingUploads > 0) {
+        appendNotice(
+          "Upload",
+          "Attachments are still uploading. Send once at least one upload completes."
+        );
         return;
       }
       const now = Date.now();
@@ -1207,35 +1424,72 @@ export function AgentChat() {
 
       setInput("");
       setError(null);
+      if (activeStreamRef.current) {
+        activeStreamRef.current.controller.abort();
+        activeStreamRef.current = null;
+        appendNotice("Flow", "Interrupted previous run");
+      }
       setIsStreaming(true);
       setStatus("planning");
       appendNotice("Command", "Prompt fed into the Orb");
+      const requestId = crypto.randomUUID();
+      const controller = new AbortController();
+      activeStreamRef.current = { requestId, controller };
 
       try {
-        // Convert files to base64 for transmission (synchronous read)
-        const attachmentData = await Promise.all(
-          (fileAttachments || []).map(async (att) => {
-            const arrayBuffer = await att.file.arrayBuffer();
-            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            return {
-              name: att.name,
-              type: att.type,
-              size: att.size,
-              isImage: att.isImage,
-              data: base64,
-            };
-          })
-        );
+        if (pendingUploads > 0) {
+          appendNotice(
+            "Upload",
+            `${pendingUploads} attachment(s) still uploading; message sent without them`
+          );
+        }
+        if (uploadFailures.length > 0) {
+          appendNotice(
+            "Upload",
+            `${uploadFailures.length} attachment(s) failed and were sent as error context to Arc`
+          );
+        }
+        if (uploadedAttachmentRefs.length > 0) {
+          const sentIds = new Set(
+            queuedAttachments
+              .filter((attachment) => {
+                const state = attachmentUploads[attachment.id];
+                return state?.status === "uploaded";
+              })
+              .map((attachment) => attachment.id)
+          );
+          setAttachments((current) =>
+            current.filter((attachment) => {
+              if (!sentIds.has(attachment.id)) return true;
+              if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+              return false;
+            })
+          );
+          setAttachmentUploads((current) => {
+            const next = { ...current };
+            for (const id of sentIds) {
+              delete next[id];
+            }
+            return next;
+          });
+        }
 
         const response = await fetch(`${backendBaseUrl}/invoke/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             message: submittedValue,
             thread_id: activeThread.id,
             last_event_id: latestRuntimeCursor?.event_id ?? null,
             last_seq: latestRuntimeCursor?.seq ?? null,
-            attachments: attachmentData,
+            uploaded_attachments: uploadedAttachmentRefs,
+            upload_failures: uploadFailures,
+            ui_context: {
+              health,
+              uiMeta,
+              connectionStatus,
+            },
           }),
         });
 
@@ -1280,24 +1534,36 @@ export function AgentChat() {
           }
         }
       } catch (submitError) {
+        if (
+          submitError instanceof DOMException &&
+          submitError.name === "AbortError"
+        ) {
+          return;
+        }
         const nextError =
           submitError instanceof Error ? submitError.message : "Unknown error";
         setError(nextError);
         setStatus("error");
         appendNotice("Failure", nextError);
       } finally {
-        setIsStreaming(false);
-        window.setTimeout(() => setStatus("idle"), 1800);
+        if (activeStreamRef.current?.requestId === requestId) {
+          activeStreamRef.current = null;
+          setIsStreaming(false);
+          window.setTimeout(() => setStatus("idle"), 1800);
+        }
       }
     },
     [
       activeThread,
+      attachmentUploads,
       appendNotice,
       backendBaseUrl,
+      connectionStatus,
       handleSlashCommand,
       handleSseEvent,
-      isStreaming,
+      health,
       latestRuntimeCursor,
+      uiMeta,
       updateThread,
     ]
   );
@@ -1445,6 +1711,7 @@ export function AgentChat() {
                       <TelemetryPanel
                         identity={uiMeta?.identity ?? null}
                         health={health}
+                        arcRuntimeMeta={uiMeta?.arc_runtime}
                         connectionStatus={connectionStatus}
                         contextRatio={contextUsage / 100}
                         isStreaming={isStreaming}
@@ -1520,7 +1787,7 @@ export function AgentChat() {
 
             {/* Right dock - inside main panel edge, below header */}
             <div
-              className="absolute right-0 top-[3.75rem] z-20 hidden xl:block"
+              className="absolute right-0 top-[3.75rem] z-20 xl:block"
               onMouseEnter={() => setRightHovered(true)}
               onMouseLeave={() => setRightHovered(false)}
             >
@@ -1651,6 +1918,7 @@ export function AgentChat() {
                       <TelemetryPanel
                         identity={uiMeta?.identity ?? null}
                         health={health}
+                        arcRuntimeMeta={uiMeta?.arc_runtime}
                         connectionStatus={connectionStatus}
                         contextRatio={contextUsage / 100}
                         isStreaming={isStreaming}
@@ -1727,28 +1995,84 @@ export function AgentChat() {
                 <div ref={scrollAnchorRef} className="h-1" />
               </div>
 
-              {(leftActivePanel === "plan" || rightActivePanel === "plan") && (
-                <div className="mt-3 xl:hidden">
-                  <PlanConstellation
-                    key="plan-mobile"
-                    todos={todos}
-                    visible={true}
-                    onClose={() => {
-                      if (leftActivePanel === "plan") {
-                        setDockActivePanel(
-                          "left",
-                          leftPanels.find((panelId) => panelId !== "plan") ?? "plan"
-                        );
-                      } else if (rightActivePanel === "plan") {
-                        setDockActivePanel(
-                          "right",
-                          rightPanels.find((panelId) => panelId !== "plan") ?? "plan"
-                        );
-                      }
-                    }}
-                  />
-                </div>
-              )}
+              <div className="mt-3 space-y-3 xl:hidden">
+                {([
+                  ["left", leftPanels, leftActivePanel],
+                  ["right", rightPanels, rightActivePanel],
+                ] as const).flatMap(([slot, panels, activePanel]) =>
+                  panels.map((panelId) => (
+                    <div
+                      key={`${slot}-${panelId}`}
+                      className={`rounded-[1rem] border p-3 ${
+                        panelId === activePanel
+                          ? "border-cyan-300/30 bg-cyan-500/[0.08]"
+                          : "border-white/10 bg-white/[0.03]"
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/38">
+                          {slot} dock - {PANEL_LABEL[panelId]}
+                        </div>
+                        {panelId !== activePanel && (
+                          <button
+                            type="button"
+                            onClick={() => setDockActivePanel(slot, panelId)}
+                            className="rounded-full border border-white/12 px-2 py-1 text-[10px] text-white/65 hover:border-white/25 hover:text-white"
+                          >
+                            Activate
+                          </button>
+                        )}
+                      </div>
+                      {panelId === "plan" ? (
+                        <PlanConstellation
+                          key={`${slot}-plan-mobile`}
+                          todos={todos}
+                          visible={true}
+                          onClose={() =>
+                            setDockActivePanel(
+                              slot,
+                              panels.find((id) => id !== "plan") ?? "plan"
+                            )
+                          }
+                        />
+                      ) : panelId === "telemetry" ? (
+                        <TelemetryPanel
+                          identity={uiMeta?.identity ?? null}
+                          health={health}
+                          connectionStatus={connectionStatus}
+                          contextRatio={contextUsage / 100}
+                          isStreaming={isStreaming}
+                          runtimeNotices={runtimeNotices}
+                          runtimeEventCount={runtimeEvents.length}
+                          runtimeGapCount={runtimeGapCount}
+                          coverageMissingCount={coverageMissingCount}
+                          frameworkTimeline={frameworkTimeline}
+                          requiredSignalClasses={requiredSignalClasses}
+                          observedSignalClasses={observedSignalClassList}
+                          missingSignalClasses={missingSignalClasses}
+                          runtimeHeartbeatAgeMs={runtimeHeartbeatAgeMs}
+                          resumeAckCount={resumeAckCount}
+                        />
+                      ) : panelId === "tools" ? (
+                        <ToolFilament tools={toolCalls} />
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {idleSuggestions.slice(0, 3).map((suggestion) => (
+                            <button
+                              key={`${slot}-${suggestion}`}
+                              type="button"
+                              onClick={() => setInput(suggestion)}
+                              className="rounded-[0.9rem] border border-white/8 bg-white/[0.03] px-3 py-2 text-left text-xs text-white/66 transition hover:border-white/16 hover:bg-white/[0.06] hover:text-white/88"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
 
               {/* Input conduit docked to bottom of main panel */}
               <div className="shrink-0 border-t border-white/8 px-4 py-3">
@@ -1773,6 +2097,8 @@ export function AgentChat() {
                   commands={uiMeta?.slash_commands ?? []}
                   setInput={setInput}
                   attachments={attachments}
+                  attachmentUploads={attachmentUploads}
+                  onCancelAttachmentUpload={cancelAttachmentUpload}
                   onAttachmentsChange={setAttachments}
                   onExecuteCommand={(command) => {
                     void handleSlashCommand(command);
@@ -1780,7 +2106,6 @@ export function AgentChat() {
                   onSubmit={(event, submitAttachments) => {
                     event.preventDefault();
                     void handleSubmit(input, submitAttachments);
-                    setAttachments([]); // Clear after submit
                   }}
                 />
               </div>

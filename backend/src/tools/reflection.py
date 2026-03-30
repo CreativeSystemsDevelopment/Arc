@@ -52,8 +52,10 @@ def create_skill(
     triggers: list[str],
     instructions: str,
 ) -> str:
-    """Create a new agent skill on-demand. Use this when you identify a
-    repeated pattern that could be automated with a reusable skill.
+    """Formats the content for a new agent skill. The agent must then use
+    the 'write_file' tool to save this content to the appropriate path in the
+    /skills/ directory (e.g., /skills/your-skill-name/SKILL.md). This ensures
+    skills are saved correctly to the virtual filesystem, especially in cloud mode.
 
     Args:
         skill_name: kebab-case name (e.g., 'langgraph-debug')
@@ -61,10 +63,6 @@ def create_skill(
         triggers: List of trigger phrases
         instructions: Full markdown instructions for the skill
     """
-    skills_root = os.environ.get("ARC_SKILLS_ROOT", "/home/eshan/arc/Arc/skills")
-    skill_dir = os.path.join(skills_root, skill_name)
-    os.makedirs(skill_dir, exist_ok=True)
-
     trigger_str = ", ".join(triggers)
     skill_content = f"""---
 description: {description}
@@ -76,10 +74,12 @@ description: {description}
 
 {instructions}
 """
-    skill_path = os.path.join(skill_dir, "SKILL.md")
-    with open(skill_path, "w") as f:
-        f.write(skill_content)
-    return f"Skill created at {skill_path}"
+    skill_path = f"/skills/{skill_name}/SKILL.md"
+    return (
+        f"Skill content for '{skill_name}' has been prepared. "
+        f"Use the 'write_file' tool to save the following content to the path '{skill_path}':\n\n"
+        f"{skill_content}"
+    )
 
 
 @tool

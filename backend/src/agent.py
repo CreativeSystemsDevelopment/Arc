@@ -178,6 +178,22 @@ def _build_persistence(workspace_root: str) -> tuple[Any, Any, bool]:
     return InMemoryStore(), MemorySaver(), False
 
 
+def _build_shell_env() -> dict[str, str]:
+    """Ensure shell tools resolve backend virtualenv binaries first."""
+    env = dict(os.environ)
+    backend_root = Path(__file__).resolve().parents[1]
+    venv_path = backend_root / ".venv"
+    venv_bin = venv_path / "bin"
+    if venv_bin.exists():
+        current_path = env.get("PATH", "")
+        path_parts = [part for part in current_path.split(":") if part]
+        venv_bin_str = str(venv_bin)
+        path_parts = [part for part in path_parts if part != venv_bin_str]
+        env["PATH"] = ":".join([venv_bin_str, *path_parts])
+        env["VIRTUAL_ENV"] = str(venv_path)
+    return env
+
+
 def build_agent():
     """Build and return the Arc Deep Zero agent graph."""
     model = build_chat_model()
@@ -190,6 +206,7 @@ def build_agent():
         shell_backend = LocalShellBackend(
             root_dir=workspace_root,
             virtual_mode=False,
+            env=_build_shell_env(),
             inherit_env=True,
         )
         # Route durable namespaces through store-backed paths while preserving

@@ -12,6 +12,7 @@ import type {
 interface TelemetryPanelProps {
   identity: UiIdentity | null;
   health: HealthPayload | null;
+  arcRuntimeMeta?: UiMeta["arc_runtime"];
   connectionStatus: "connected" | "connecting" | "offline";
   contextRatio: number;
   isStreaming: boolean;
@@ -36,6 +37,7 @@ function metricTone(value: number, warning: number, danger: number) {
 export function TelemetryPanel({
   identity,
   health,
+  arcRuntimeMeta,
   connectionStatus,
   contextRatio,
   isStreaming,
@@ -109,6 +111,15 @@ export function TelemetryPanel({
             <div className={`font-mono text-[10px] uppercase tracking-[0.22em] ${statusTone}`}>
               {health?.status ?? "syncing"}
             </div>
+            {health?.issues && health.issues.length > 0 && (
+              <div className="mt-1 flex flex-col items-end gap-1">
+                {health.issues.map((issue) => (
+                  <span key={issue} className="text-[9px] font-medium text-rose-300 bg-rose-950/30 px-1.5 py-0.5 rounded">
+                    {issue}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -172,6 +183,35 @@ export function TelemetryPanel({
             </div>
           ))}
         </div>
+
+        {arcRuntimeMeta?.bootstrap_fault_count ? (
+          <div className="mt-5 rounded-[1.5rem] border border-rose-500/20 bg-rose-500/10 p-4 shadow-[0_0_15px_rgba(244,63,94,0.15)]">
+            <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.24em] text-rose-200">
+              <span>System Faults</span>
+              <span className="animate-pulse">{arcRuntimeMeta.bootstrap_fault_count} detected</span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {arcRuntimeMeta.recent_bootstrap_faults?.slice().reverse().map((fault) => (
+                <div
+                  key={fault.id}
+                  className="rounded-[1rem] border border-rose-500/10 bg-rose-950/40 px-3 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-rose-300">
+                      {fault.source}
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-200">
+                      {fault.self_healing_status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-rose-100/80">
+                    {fault.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-5 rounded-[1.5rem] border border-white/8 bg-black/18 p-4">
           <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.24em] text-white/35">

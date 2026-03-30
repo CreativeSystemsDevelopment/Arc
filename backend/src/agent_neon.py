@@ -303,17 +303,6 @@ def build_neon_agent():
     store = None
     checkpointer = None
     
-    # Azure skills are excluded from sync
-    excluded_skills = {
-        "appinsights-instrumentation", "azure-ai", "azure-aigateway",
-        "azure-cloud-migrate", "azure-compliance", "azure-compute",
-        "azure-cost-optimization", "azure-deploy", "azure-diagnostics",
-        "azure-hosted-copilot-sdk", "azure-kusto", "azure-messaging",
-        "azure-observability", "azure-prepare", "azure-quotas",
-        "azure-rbac", "azure-resource-lookup", "azure-resource-visualizer",
-        "azure-storage", "azure-validate",
-    }
-    
     if database_url:
         try:
             # Ensure sslmode is set (Neon requires SSL)
