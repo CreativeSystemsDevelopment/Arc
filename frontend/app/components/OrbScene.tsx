@@ -11,6 +11,13 @@ interface OrbSceneProps {
   mode: OrbMode;
   contextRatio: number;
   reducedMotion: boolean;
+  orbSpeed?: number;
+  orbDistortion?: number;
+  orbGlow?: number;
+  ambientLight?: number;
+  orbColors?: boolean;
+  showParticles?: boolean;
+  showReflections?: boolean;
 }
 
 const ORB_COLORS: Record<OrbMode, { primary: string; secondary: string; glow: string }> = {
@@ -266,7 +273,22 @@ function OrbCore({
   mode,
   contextRatio,
   reducedMotion,
-}: Pick<OrbSceneProps, "mode" | "contextRatio" | "reducedMotion">) {
+  orbSpeed = 1,
+  orbDistortion = 1,
+  orbGlow = 1,
+  orbColors = true,
+  showParticles = true,
+}: Pick<
+  OrbSceneProps,
+  | "mode"
+  | "contextRatio"
+  | "reducedMotion"
+  | "orbSpeed"
+  | "orbDistortion"
+  | "orbGlow"
+  | "orbColors"
+  | "showParticles"
+>) {
   const meshRef = useRef<THREE.Mesh>(null);
   const particleRef = useRef<THREE.Points>(null);
 
@@ -301,7 +323,7 @@ function OrbCore({
 
   useFrame((state, delta) => {
     const motionStep = reducedMotion ? delta * 0.15 : delta;
-    const colors = ORB_COLORS[mode];
+    const colors = orbColors ? ORB_COLORS[mode] : ORB_COLORS.idle;
 
     // State-based target values
     const targetEnergy =
@@ -340,12 +362,17 @@ function OrbCore({
     // Smooth interpolation
     const lerpSpeed = reducedMotion ? 0.04 : 0.08;
 
-    uniforms.uTime.value += motionStep;
+    uniforms.uTime.value += motionStep * Math.max(orbSpeed, 0.1);
     uniforms.uEnergy.value = THREE.MathUtils.lerp(uniforms.uEnergy.value, targetEnergy, lerpSpeed);
-    uniforms.uDistortion.value = THREE.MathUtils.lerp(uniforms.uDistortion.value, targetDistortion, lerpSpeed);
+    uniforms.uDistortion.value = THREE.MathUtils.lerp(
+      uniforms.uDistortion.value,
+      targetDistortion * Math.max(orbDistortion, 0.1),
+      lerpSpeed
+    );
     uniforms.uBrightness.value = THREE.MathUtils.lerp(
       uniforms.uBrightness.value,
-      targetBrightness + Math.sin(state.clock.elapsedTime * 0.5) * 0.05,
+      (targetBrightness + Math.sin(state.clock.elapsedTime * 0.5) * 0.05) *
+        Math.max(orbGlow, 0.1),
       lerpSpeed
     );
     uniforms.uError.value = THREE.MathUtils.lerp(uniforms.uError.value, mode === "error" ? 1 : 0, 0.12);
@@ -379,7 +406,7 @@ function OrbCore({
               ? 0.08
               : 0.05;
 
-      meshRef.current.rotation.y += delta * rotationSpeed;
+      meshRef.current.rotation.y += delta * rotationSpeed * Math.max(orbSpeed, 0.1);
       meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.12) * 0.03;
       meshRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.08) * 0.02;
       
@@ -398,7 +425,7 @@ function OrbCore({
         // Orbit particles around the sphere
         const speed =
           reducedMotion ? 0.1 : mode === "idle" ? 0.2 : 0.5 + uniforms.uEnergy.value * 0.5;
-        const angle = state.clock.elapsedTime * speed * 0.1 + i * 0.1;
+        const angle = state.clock.elapsedTime * speed * 0.1 * Math.max(orbSpeed, 0.1) + i * 0.1;
         const radius = 2.8 + Math.sin(angle * 2 + i) * 0.2;
         
         positions[i3 + 1] += Math.sin(state.clock.elapsedTime + i) * 0.002 * (1 + uniforms.uEnergy.value);
@@ -407,7 +434,9 @@ function OrbCore({
       
       // Particle opacity based on mode
       const material = particleRef.current.material as THREE.PointsMaterial;
-      material.opacity = 0.3 + uniforms.uEnergy.value * 0.3;
+      material.opacity = showParticles
+        ? (0.3 + uniforms.uEnergy.value * 0.3) * Math.max(orbGlow, 0.1)
+        : 0;
     }
   });
 
@@ -447,7 +476,7 @@ function OrbCore({
         </mesh>
 
         {/* Atmosphere particles */}
-        <points ref={particleRef}>
+        <points ref={particleRef} visible={showParticles}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[particlePositions, 3]} />
           </bufferGeometry>
@@ -470,6 +499,13 @@ export function OrbScene({
   mode,
   contextRatio,
   reducedMotion,
+  orbSpeed = 1,
+  orbDistortion = 1,
+  orbGlow = 1,
+  ambientLight = 0.8,
+  orbColors = true,
+  showParticles = true,
+  showReflections = true,
 }: OrbSceneProps) {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -489,13 +525,23 @@ export function OrbScene({
         className="absolute left-1/2 top-[12%] h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(220,225,255,0.18),rgba(108,118,190,0.08),transparent_72%)] blur-[92px]"
         animate={
           reducedMotion
-            ? { opacity: 0.5 }
+            ? { opacity: 0.5 * Math.max(orbGlow, 0.1) }
             : mode === "idle"
-              ? { opacity: [0.3, 0.4, 0.35], scale: [0.96, 1.02, 0.98] }
-              : { opacity: [0.4, 0.65, 0.45], scale: [0.96, 1.04, 0.98] }
+              ? {
+                  opacity: [0.3, 0.4, 0.35].map((v) => v * Math.max(orbGlow, 0.1)),
+                  scale: [0.96, 1.02, 0.98],
+                }
+              : {
+                  opacity: [0.4, 0.65, 0.45].map((v) => v * Math.max(orbGlow, 0.1)),
+                  scale: [0.96, 1.04, 0.98],
+                }
         }
         transition={{ duration: mode === "idle" ? 8 : 4, repeat: Infinity, ease: "easeInOut" }}
       />
+
+      {showReflections && (
+        <div className="absolute inset-x-[20%] bottom-[12%] h-20 rounded-full bg-[radial-gradient(circle,rgba(183,197,255,0.12),rgba(76,89,150,0.04),transparent_70%)] blur-2xl" />
+      )}
 
 
       {/* Three.js Canvas */}
@@ -504,11 +550,15 @@ export function OrbScene({
         dpr={[1, 1.6]}
         className="absolute inset-0"
       >
-        <ambientLight intensity={0.28} color="#dfe5ff" />
-        <directionalLight position={[0.8, 4.2, 3.6]} intensity={1.28} color="#f3f6ff" />
+        <ambientLight intensity={Math.max(0.05, ambientLight * 0.35)} color="#dfe5ff" />
+        <directionalLight
+          position={[0.8, 4.2, 3.6]}
+          intensity={Math.max(0.2, 1.28 * Math.max(orbGlow, 0.1))}
+          color="#f3f6ff"
+        />
         <pointLight
           position={[0, 2.4, 2.8]}
-          intensity={0.3}
+          intensity={Math.max(0.05, 0.3 * Math.max(orbGlow, 0.1))}
           distance={8}
           color="#89a6ff"
         />
@@ -516,6 +566,11 @@ export function OrbScene({
           mode={mode}
           contextRatio={contextRatio}
           reducedMotion={reducedMotion}
+          orbSpeed={orbSpeed}
+          orbDistortion={orbDistortion}
+          orbGlow={orbGlow}
+          orbColors={orbColors}
+          showParticles={showParticles}
         />
       </Canvas>
     </div>
